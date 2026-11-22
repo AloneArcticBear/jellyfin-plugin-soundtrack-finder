@@ -1,0 +1,15 @@
+{
+  "category": "Metadata",
+  "changelog": "1.3.2: 'Jetzt läuft' erscheint in allen offenen Jellyfin-Tabs/Fenstern eines Browsers (Jellyfin schickte sie nur an den zuletzt aktiven), Zeitpunkt nur noch aus den Meldungen des Players, klarere Diagnose nach Jellyfin-Neustart (erstellt von Claude)",
+  "description": "Erkennt Songs in Filmen und Serien per Shazam, zeigt sie auf einer Timeline und speichert sie auf Wunsch als Musik in Jellyfin.",
+  "guid": "5f3c1a2e-9b7d-4c1e-a8f2-6d0e3b9c7a41",
+  "name": "Soundtrack Finder",
+  "overview": "Songs in Filmen und Serien erkennen, bearbeiten und speichern",
+  "owner": "AloneArcticBear",
+  "targetAbi": "12.4.0.0",
+  "timestamp": "2026-11-22T14:45:50Z",
+  "version": "1.3.2.0",
+  "status": "Active",
+  "autoUpdate": false,
+  "assemblies": []
+}

@@ -1,0 +1,41 @@
+<!-- #claude -->
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <base href="{{BASE}}">
+    <title>Soundtracks</title>
+    <style>
+        html, body { background: #101010; color: #e8e8e8; margin: 0; font-family: "Noto Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-size: 15px; }
+        .app-top { position: sticky; top: 0; z-index: 50; display: flex; flex-wrap: wrap; align-items: center; gap: .8em; padding: .7em 1.2em; background: #181818; border-bottom: 1px solid #2a2a2a; }
+        .app-top h1 { font-size: 1.25em; margin: 0; font-weight: 600; }
+        .app-top .grow { flex: 1 1 auto; }
+        .app-top a { color: #00a4dc; text-decoration: none; white-space: nowrap; }
+        .app-top .who { opacity: .7; font-size: .9em; white-space: nowrap; }
+        .app-main { max-width: 1400px; margin: 0 auto; padding: 1em 1.2em 3em; }
+        .app-msg { max-width: 34em; margin: 4em auto; text-align: center; line-height: 1.5; }
+        .app-msg a { color: #00a4dc; }
+        #SoundtrackFinderPage .sectionTitle { display: none; }
+        #SoundtrackFinderPage[data-mode=user] .stf-admin { display: none !important; }
+        @media (max-width: 700px) {
+            .app-top { padding: .6em .8em; }
+            .app-main { padding: .6em .6em 3em; }
+            .app-top .who { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-top">
+        <h1>🎵 Soundtracks</h1>
+        <span class="grow"></span>
+        <span class="who" id="appWho"></span>
+        <a href="{{WEB}}" id="appBack">Zu Jellyfin</a>
+    </div>
+    <div class="app-main" id="appMain">
+        <div class="app-msg" id="appMsg">Lade …</div>
+        {{PAGE}}
+    </div>
+    <script type="module" src="AppScript"></script>
+</body>
+</html>

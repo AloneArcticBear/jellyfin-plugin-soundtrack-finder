@@ -1,0 +1,52 @@
+<!-- #claude -->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>Jellyfin.Plugin.SoundtrackFinder</RootNamespace>
+    <AssemblyName>Jellyfin.Plugin.SoundtrackFinder</AssemblyName>
+    <AssemblyVersion>1.3.2.0</AssemblyVersion>
+    <FileVersion>1.3.2.0</FileVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <!--
+    Jellyfin 12.4 assemblies are provided by the server at runtime and are not shipped with the plugin.
+    Normal build: taken from NuGet (Jellyfin.Controller / Jellyfin.Model 12.4).
+    Offline build: if a folder ../jfref with the Jellyfin DLLs exists, those are used instead.
+  -->
+  <PropertyGroup>
+    <JellyfinRefDir>$(MSBuildThisFileDirectory)../jfref/</JellyfinRefDir>
+    <UseLocalJellyfinRefs Condition="Exists('$(JellyfinRefDir)MediaBrowser.Controller.dll')">true</UseLocalJellyfinRefs>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UseLocalJellyfinRefs)' != 'true'">
+    <PackageReference Include="Jellyfin.Controller" Version="12.4.*" ExcludeAssets="runtime" />
+    <PackageReference Include="Jellyfin.Model" Version="12.4.*" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseLocalJellyfinRefs)' == 'true'">
+    <Reference Include="MediaBrowser.Common"><HintPath>$(JellyfinRefDir)MediaBrowser.Common.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="MediaBrowser.Controller"><HintPath>$(JellyfinRefDir)MediaBrowser.Controller.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="MediaBrowser.Model"><HintPath>$(JellyfinRefDir)MediaBrowser.Model.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Jellyfin.Data"><HintPath>$(JellyfinRefDir)Jellyfin.Data.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Jellyfin.Database.Implementations"><HintPath>$(JellyfinRefDir)Jellyfin.Database.Implementations.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Jellyfin.Extensions"><HintPath>$(JellyfinRefDir)Jellyfin.Extensions.dll</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Web\*" />
+    <EmbeddedResource Include="Web\configPage.html" />
+    <EmbeddedResource Include="Web\configPage.js" />
+    <EmbeddedResource Include="Web\app.html" />
+    <EmbeddedResource Include="Web\appStart.js" />
+  </ItemGroup>
+
+</Project>

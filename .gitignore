@@ -1,0 +1,9 @@
+# claude
+bin/
+obj/
+jfref/
+*.zip
+.DS_Store
+.vs/
+.idea/
+*.user
