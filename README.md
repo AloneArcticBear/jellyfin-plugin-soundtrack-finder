@@ -45,7 +45,7 @@ Installing from the repository also gives you update notifications. It removes t
 
 ### Option B: manual install
 
-1. Download `SoundtrackFinder_<version>_claude.zip` from [Releases](https://github.com/AloneArcticBear/jellyfin-plugin-soundtrack-finder/releases).
+1. Download `SoundtrackFinder_<version>_claude.zip` from the [`releases_claude`](releases_claude) folder (one subfolder per version).
 2. Unzip it into Jellyfin's `plugins` folder so you get `…/config/plugins/SoundtrackFinder_<version>/` containing the DLL and `meta.json`. Keep only one version in that folder.
 3. Restart Jellyfin.
 
@@ -177,8 +177,10 @@ The project references `Jellyfin.Controller` and `Jellyfin.Model` 12.4 from NuGe
 ### Publishing a release
 
 1. Bump `AssemblyVersion`/`FileVersion` in the `.csproj` and build.
-2. Zip `Jellyfin.Plugin.SoundtrackFinder.dll` and `meta.json` with no subfolder and attach the ZIP to a GitHub release tagged `v<version>`.
-3. Add a new entry at the top of `versions` in `manifest_claude.json`, with `sourceUrl` pointing to the release asset and `checksum` set to the ZIP's MD5 (`md5sum file.zip`).
+2. Create `releases_claude/v<version>/` with two ZIPs:
+   - `soundtrack-finder_<version>_claude.zip`: `Jellyfin.Plugin.SoundtrackFinder.dll` and `meta.json`, no subfolder (used by the catalog)
+   - `SoundtrackFinder_<version>_claude.zip`: the same files inside a folder `SoundtrackFinder_<version>/` (manual install)
+3. Add a new entry at the top of `versions` in `manifest_claude.json`, with `sourceUrl` pointing to the raw URL of the catalog ZIP and `checksum` set to its MD5 (`md5sum file.zip`).
 
 ## Disclaimer
 

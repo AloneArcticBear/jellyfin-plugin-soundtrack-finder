@@ -1,7 +1,7 @@
 <!-- #claude -->
 # Changelog
 
-All versions target Jellyfin 12.4 (ABI `12.4.0.0`). Release downloads are available for 1.0.0.0, 1.3.1.0 and 1.3.2.0.
+All versions target Jellyfin 12.4 (ABI `12.4.0.0`). Downloads (in [`releases_claude`](releases_claude) and in the Jellyfin catalog) are available for 1.0.0.0, 1.3.1.0 and 1.3.2.0; the source code in this repository is the current version.
 
 ## 1.3.2.0 – 2026-11-22
 - "Now playing" pop-ups now reach every open Jellyfin Web tab or window of a browser. Jellyfin itself only sends messages to the most recently active connection, and all tabs of one browser share a session, so pop-ups often landed in the wrong tab.

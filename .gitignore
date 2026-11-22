@@ -7,3 +7,4 @@ jfref/
 .vs/
 .idea/
 *.user
+!releases_claude/**/*.zip
