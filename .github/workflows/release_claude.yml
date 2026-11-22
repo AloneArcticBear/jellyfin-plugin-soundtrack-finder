@@ -1,0 +1,42 @@
+# claude: creates a GitHub release with the plugin ZIPs whenever a tag v<version> is pushed
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          VER="${TAG#v}"
+          DIR="releases_claude/$TAG"
+          if [ ! -d "$DIR" ]; then echo "Folder $DIR is missing"; exit 1; fi
+
+          # release notes = this version's section of CHANGELOG.md
+          awk -v v="$VER" 'index($0, "## " v " ") == 1 {f = 1; next} /^## / && f {exit} f' CHANGELOG.md > notes.md
+
+          NEWEST=$(jq -r '.[0].versions[0].version' manifest_claude.json)
+          if [ "$VER" = "$NEWEST" ]; then
+            LATEST="--latest"
+          else
+            LATEST="--latest=false"
+            printf '\n_Binary only: the source code archives below show the newest code, not this version._\n' >> notes.md
+          fi
+          printf '\n**Install:** add `https://raw.githubusercontent.com/%s/main/manifest_claude.json` as a plugin repository in Jellyfin, or unzip `SoundtrackFinder_%s_claude.zip` into the plugins folder.\n' "$GITHUB_REPOSITORY" "$VER" >> notes.md
+
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" "$DIR"/*.zip --clobber
+          else
+            gh release create "$TAG" "$DIR"/*.zip --title "$VER" --notes-file notes.md $LATEST
+          fi
