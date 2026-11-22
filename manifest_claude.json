@@ -32,6 +32,30 @@
         "timestamp": "2026-11-22T14:15:30Z"
       },
       {
+        "version": "1.3.0.0",
+        "changelog": "'Now playing' pop-up while watching; search across all titles and statistics.",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/AloneArcticBear/jellyfin-plugin-soundtrack-finder/main/releases_claude/v1.3.0.0/soundtrack-finder_1.3.0.0_claude.zip",
+        "checksum": "06e502cc0906d11ba5f60e0bf1b6854f",
+        "timestamp": "2026-11-22T13:02:52Z"
+      },
+      {
+        "version": "1.2.3.0",
+        "changelog": "Link '▶ listen & edit' next to the song list in every description; public URL setting; deep links.",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/AloneArcticBear/jellyfin-plugin-soundtrack-finder/main/releases_claude/v1.2.3.0/soundtrack-finder_1.2.3.0_claude.zip",
+        "checksum": "fb318423bec4973e33f3734f7dddcdf6",
+        "timestamp": "2026-11-22T12:21:27Z"
+      },
+      {
+        "version": "1.2.2.0",
+        "changelog": "Exclusion list for false matches (sound-effect libraries, cover factories); admin button to always exclude an artist.",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/AloneArcticBear/jellyfin-plugin-soundtrack-finder/main/releases_claude/v1.2.2.0/soundtrack-finder_1.2.2.0_claude.zip",
+        "checksum": "6f1e46699f385c7c54d940aa49a15e66",
+        "timestamp": "2026-11-22T12:06:48Z"
+      },
+      {
         "version": "1.0.0.0",
         "changelog": "First version: Shazam recognition, song list in the description, dashboard page with corrections.",
         "targetAbi": "12.4.0.0",
