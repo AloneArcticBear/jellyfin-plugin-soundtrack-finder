@@ -6,6 +6,7 @@ const cfgNumbers = ['SnippetSpacingSeconds', 'SnippetLengthSeconds', 'RequestDel
 const cfgTexts = ['MusicExportPath', 'ExportAlbumArtist', 'PublicUrl'];
 
 const RULER_H = 26;
+const THUMB_H = 56; // strip with preview images above the ruler
 const LANE_H = 36;
 const DOTS_H = 22;
 const MAX_PPS = 60; // pixels per second at maximum zoom
@@ -274,6 +275,7 @@ export default function (view) {
         undo: [],
         showSeg: true,
         showDots: true,
+        showThumbs: (() => { try { return localStorage.getItem('stf-thumbs') !== '0'; } catch { return true; } })(),
         lanes: new Map(),
         laneCount: 1,
         busy: false,
@@ -703,10 +705,12 @@ export default function (view) {
         computeLanes();
         const inner = $('#tlInner');
         inner.style.width = Math.ceil(runtime() * pps) + 'px';
-        inner.style.height = (RULER_H + 8 + st.laneCount * LANE_H + DOTS_H) + 'px';
+        inner.style.height = (topOff() + RULER_H + 8 + st.laneCount * LANE_H + DOTS_H) + 'px';
+        $('#tlRuler').style.top = topOff() + 'px';
+        $('#tlThumbs').style.display = st.showThumbs ? 'block' : 'none';
 
         $('#tlSegs').innerHTML = st.showSeg ? it.musicSegments.map(m =>
-            `<div class="tl-seg" style="left:${m.start * pps}px;width:${Math.max(1, (m.end - m.start) * pps)}px" title="${esc(T('tl.segTitle', { from: fmtTime(m.start), to: fmtTime(m.end) }))}"></div>`).join('') : '';
+            `<div class="tl-seg" style="top:${topOff() + 25}px;left:${m.start * pps}px;width:${Math.max(1, (m.end - m.start) * pps)}px" title="${esc(T('tl.segTitle', { from: fmtTime(m.start), to: fmtTime(m.end) }))}"></div>`).join('') : '';
 
         const counts = new Map();
         for (const s of it.songs) counts.set(songKey(s), (counts.get(songKey(s)) || 0) + 1);
@@ -747,7 +751,7 @@ export default function (view) {
         el.style.left = (s.start * st.pps) + 'px';
         el.style.width = Math.max(6, (s.end - s.start) * st.pps) + 'px';
         el.classList.toggle('narrow', (s.end - s.start) * st.pps < 70);
-        el.style.top = (RULER_H + 6 + lane * LANE_H) + 'px';
+        el.style.top = (topOff() + RULER_H + 6 + lane * LANE_H) + 'px';
     }
 
     function renderTicks() {
@@ -769,7 +773,35 @@ export default function (view) {
             html += `<div class="tl-tick" style="left:${t * pps}px">${fmtTime(t)}</div>`;
         }
         $('#tlRuler').innerHTML = html;
+        renderThumbs(from, to);
         stickLabels();
+    }
+
+    function topOff() {
+        return st.showThumbs ? THUMB_H : 0;
+    }
+
+    // preview images: one per slot, slots on a fixed time grid so zooming reuses cached images
+    function renderThumbs(from, to) {
+        const box = $('#tlThumbs');
+        if (!st.showThumbs || !st.item) {
+            box.innerHTML = '';
+            return;
+        }
+        const pps = st.pps;
+        const step = [2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600].find(x => x * pps >= 90) || 3600;
+        const key = st.item.id + '|' + step + '|' + Math.floor(from / step) + '|' + Math.ceil(to / step) + '|' + pps;
+        if (box.dataset.key === key) return;
+        box.dataset.key = key;
+        const R = runtime();
+        let html = '';
+        for (let s = Math.floor(from / step) * step; s < Math.min(to, R); s += step) {
+            const at = Math.min(R - 1, s + step / 2);
+            const q = new URLSearchParams({ t: at.toFixed(1), ApiKey: ApiClient.accessToken() });
+            html += `<img loading="lazy" alt="" src="${esc(apiUrl(`Items/${st.item.id}/Thumb`) + '?' + q.toString())}" style="left:${s * pps}px;width:${Math.max(1, Math.min(step, R - s) * pps)}px">`;
+        }
+        box.innerHTML = html;
+        box.querySelectorAll('img').forEach(img => img.addEventListener('error', () => { img.style.visibility = 'hidden'; }));
     }
 
     function stickLabels() {
@@ -823,6 +855,9 @@ export default function (view) {
             link.href = 'https://music.apple.com/search?term=' + encodeURIComponent(((s.artist || '') + ' ' + (s.title || '')).trim());
             link.textContent = T('d.appleSearch');
         }
+        const term = encodeURIComponent(((s.artist || '') + ' ' + (s.title || '')).trim());
+        $('#tlSpotifyLink').href = 'https://open.spotify.com/search/' + term;
+        $('#tlYoutubeLink').href = 'https://www.youtube.com/results?search_query=' + term;
         const exp = $('#tlExportSong');
         exp.disabled = !st.item.exportPossible;
         exp.textContent = T(s.exportState === 'saved' ? 'd.exported' : (s.exportState === 'stale' ? 'd.reexport' : 'd.export'));
@@ -1266,7 +1301,7 @@ export default function (view) {
             $('#tlSongTitle').select();
             return;
         }
-        if (e.target.closest('.tl-ruler')) return;
+        if (e.target.closest('.tl-ruler') || e.target.closest('.tl-thumbs')) return;
         addSongAt(timeAtClientX(e.clientX));
     }
 
@@ -1512,6 +1547,13 @@ export default function (view) {
     }));
     $('#tlShowSeg').addEventListener('change', e => { st.showSeg = e.target.checked; renderTimeline(); });
     $('#tlShowDots').addEventListener('change', e => { st.showDots = e.target.checked; renderTimeline(); });
+    $('#tlShowThumbs').checked = st.showThumbs;
+    $('#tlShowThumbs').addEventListener('change', e => {
+        st.showThumbs = e.target.checked;
+        try { localStorage.setItem('stf-thumbs', st.showThumbs ? '1' : '0'); } catch { /* not remembered */ }
+        $('#tlThumbs').dataset.key = '';
+        renderTimeline();
+    });
     $('#tlPrev').addEventListener('click', () => st.item && st.item.prevId && openItem(st.item.prevId, true).catch(err => toast(err.message, true)));
     $('#tlNext').addEventListener('click', () => st.item && st.item.nextId && openItem(st.item.nextId, true).catch(err => toast(err.message, true)));
     $('#tlUndo').addEventListener('click', undo);

@@ -17,6 +17,8 @@ Find out which songs play in your movies and TV episodes. Soundtrack Finder list
   - undo up to 40 steps
   - zoom and scroll, and use keyboard shortcuts
 - **Listen in place.** Play from the cursor, a whole song, or just its end, streamed straight from your file.
+- **Preview images.** A strip of stills from the movie above the timeline shows which scene you are in.
+- **Find the song elsewhere.** Links to Apple Music, Spotify and YouTube for every song.
 - **Save to Jellyfin as music.** Each song is cut from your own file into an MP3, with tags, the poster as cover art and a short fade in and out. Movies become albums (`Movie (Year)/01 - Artist - Title.mp3`); series become one album per season. The music library is rescanned automatically.
 - **Scene as MP3.** Download any song section as an MP3 with the same tags and cover art as in the music library, so it imports cleanly into Apple Music, iTunes or other players.
 - **Remove from Jellyfin.** Delete saved MP3s again, one song or a whole title at a time. The songs stay on the timeline and can be saved again later.
@@ -57,7 +59,7 @@ Docker example:
 ```bash
 cd /path/to/jellyfin/config/plugins
 rm -rf SoundtrackFinder_1.*
-unzip ~/SoundtrackFinder_1.4.0.0_claude.zip -d .
+unzip ~/SoundtrackFinder_1.5.0.0_claude.zip -d .
 docker restart jellyfin
 ```
 

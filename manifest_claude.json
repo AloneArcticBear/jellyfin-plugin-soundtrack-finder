@@ -8,6 +8,14 @@
     "category": "Metadata",
     "versions": [
       {
+        "version": "1.5.0.0",
+        "changelog": "Preview images from the movie above the timeline (can be turned off); 'Search on Spotify' and 'Search on YouTube' links.",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/AloneArcticBear/jellyfin-plugin-soundtrack-finder/main/releases_claude/v1.5.0.0/soundtrack-finder_1.5.0.0_claude.zip",
+        "checksum": "0c88ea818892c9c8fae850db8f478528",
+        "timestamp": "2026-11-22T17:28:13Z"
+      },
+      {
         "version": "1.4.0.0",
         "changelog": "Interface in English, German, French, Spanish and Italian (automatic or chosen on the page); 'Re-analyze all'; remove saved songs from Jellyfin (per song and per title); 'Scene as MP3' gets proper tags and cover instead of the movie file's title.",
         "targetAbi": "12.4.0.0",

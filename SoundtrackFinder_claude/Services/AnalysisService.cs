@@ -90,6 +90,9 @@ public sealed class AnalysisService : IHostedService, IDisposable
     /// <summary>Gets the temp path.</summary>
     public string TempPath => _paths.TempDirectory;
 
+    /// <summary>Gets the folder for cached preview images (Jellyfin's cache folder).</summary>
+    public string ThumbCachePath => System.IO.Path.Combine(string.IsNullOrEmpty(_paths.CachePath) ? _paths.TempDirectory : _paths.CachePath, "soundtrackfinder-thumbs");
+
     private static Configuration.PluginConfiguration Config => Plugin.Instance?.Configuration ?? new Configuration.PluginConfiguration();
 
     /// <summary>Returns all eligible movies/episodes of the configured libraries (only those the user may see, if given).</summary>

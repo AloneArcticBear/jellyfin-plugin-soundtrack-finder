@@ -250,5 +250,8 @@
   "srv.taskDescription": "Reconoce con Shazam las canciones de películas y episodios aún no analizados.",
   "srv.series": "Serie",
   "srv.unknownArtist": "Desconocido",
-  "srv.unknownSong": "Canción desconocida"
+  "srv.unknownSong": "Canción desconocida",
+  "tl.showThumbs": "Miniaturas",
+  "d.spotify": "Buscar en Spotify",
+  "d.youtube": "Buscar en YouTube"
 }

@@ -114,6 +114,9 @@ public class SoundtrackController : ControllerBase
     }
 
     // language of the page that sent the request (texts in error messages and warnings)
+    // preview images are cut one or two at a time so the server stays responsive
+    private static readonly SemaphoreSlim ThumbLock = new(2, 2);
+
     private string Lang => Loc.Normalize(Request?.Headers["X-STF-Lang"].ToString()) ?? Loc.ConfigLanguage;
 
     private Guid CurrentUserId()
@@ -695,6 +698,77 @@ public class SoundtrackController : ControllerBase
         var bytes = await _exporter.RenderDownloadAsync(item, s, _service.TempPath, ct).ConfigureAwait(false);
         var name = string.Join("_", $"{s.Artist} - {s.Title} ({item.Name}).mp3".Split(System.IO.Path.GetInvalidFileNameChars()));
         return File(bytes, "audio/mpeg", name);
+    }
+
+    /// <summary>
+    /// Preview image of the title at <paramref name="t"/> seconds for the timeline (cut with ffmpeg once,
+    /// then cached in Jellyfin's cache folder). Auth: header or ?ApiKey= (an img element cannot send headers).
+    /// </summary>
+    [HttpGet("Items/{id}/Thumb")]
+    [Produces("image/jpeg")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<ActionResult> Thumb([FromRoute] Guid id, [FromQuery] double t, CancellationToken ct)
+    {
+        var item = Find(id);
+        if (item == null || string.IsNullOrEmpty(item.Path))
+        {
+            return NotFound();
+        }
+
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        double runtime = item.RunTimeTicks.HasValue ? TimeSpan.FromTicks(item.RunTimeTicks.Value).TotalSeconds : double.MaxValue;
+        t = Math.Round(Math.Clamp(t, 0, Math.Max(0, runtime - 1)), 1);
+        var dir = System.IO.Path.Combine(_service.ThumbCachePath, id.ToString("N"));
+        var file = System.IO.Path.Combine(dir, t.ToString("0.0", inv) + ".jpg");
+        if (!System.IO.File.Exists(file))
+        {
+            await ThumbLock.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                if (!System.IO.File.Exists(file))
+                {
+                    System.IO.Directory.CreateDirectory(dir);
+                    var tmp = file + "." + Guid.NewGuid().ToString("N") + ".tmp.jpg";
+                    try
+                    {
+                        await AudioScanner.RunFfmpegAsync(
+                            _service.FfmpegPath,
+                            new[]
+                            {
+                                "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
+                                "-ss", t.ToString("0.###", inv), "-i", item.Path,
+                                "-map", "0:v:0", "-frames:v", "1", "-an", "-sn",
+                                "-vf", "scale=192:-2", "-q:v", "6", "-f", "image2", tmp
+                            },
+                            ct).ConfigureAwait(false);
+                        System.IO.File.Move(tmp, file, true);
+                    }
+                    finally
+                    {
+                        if (System.IO.File.Exists(tmp))
+                        {
+                            System.IO.File.Delete(tmp);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException)
+            {
+                return NotFound();
+            }
+            finally
+            {
+                ThumbLock.Release();
+            }
+        }
+
+        if (!System.IO.File.Exists(file))
+        {
+            return NotFound();
+        }
+
+        Response.Headers.CacheControl = "private, max-age=604800";
+        return PhysicalFile(file, "image/jpeg");
     }
 
     /// <summary>

@@ -1,14 +1,14 @@
 {
   "category": "Metadata",
-  "changelog": "1.4: Oberfläche auf Deutsch, Englisch, Französisch, Spanisch und Italienisch (automatisch oder per Auswahl), „Alle neu analysieren“, Songs aus Jellyfin entfernen (pro Song und pro Titel), „Szene als MP3“ mit richtigen Tags und Cover statt des Titels der Filmdatei (erstellt von Claude)",
+  "changelog": "1.5: Vorschaubilder aus dem Film über der Timeline (abschaltbar), Links „In Spotify suchen“ und „Auf YouTube suchen“ (erstellt von Claude)",
   "description": "Recognizes the songs in movies and series with Shazam, shows them on a timeline for editing and saves them as music in Jellyfin. / Erkennt Songs in Filmen und Serien per Shazam, zeigt sie auf einer Timeline und speichert sie als Musik in Jellyfin.",
   "guid": "5f3c1a2e-9b7d-4c1e-a8f2-6d0e3b9c7a41",
   "name": "Soundtrack Finder",
   "overview": "Find, edit and save the songs in your movies and series",
   "owner": "AloneArcticBear",
   "targetAbi": "12.4.0.0",
-  "timestamp": "2026-11-22T16:47:14Z",
-  "version": "1.4.0.0",
+  "timestamp": "2026-11-22T17:28:13Z",
+  "version": "1.5.0.0",
   "status": "Active",
   "autoUpdate": false,
   "assemblies": []

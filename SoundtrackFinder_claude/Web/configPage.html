@@ -56,6 +56,8 @@
                 #SoundtrackFinderPage .tl-ruler { position: absolute; left: 0; right: 0; top: 0; height: 24px; border-bottom: 1px solid var(--stf-line); font-size: .75em; }
                 #SoundtrackFinderPage .tl-tick { position: absolute; top: 0; height: 24px; border-left: 1px solid rgba(255,255,255,.35); padding-left: 3px; line-height: 22px; opacity: .85; white-space: nowrap; pointer-events: none; }
                 #SoundtrackFinderPage .tl-tick.minor { height: 6px; top: 18px; border-left-color: rgba(255,255,255,.2); padding: 0; }
+                #SoundtrackFinderPage .tl-thumbs { position: absolute; left: 0; right: 0; top: 0; height: 54px; overflow: hidden; background: #000; display: none; }
+                #SoundtrackFinderPage .tl-thumbs img { position: absolute; top: 0; height: 54px; object-fit: cover; border-right: 1px solid rgba(0,0,0,.6); opacity: .9; pointer-events: none; background: #111; }
                 #SoundtrackFinderPage .tl-seg { position: absolute; top: 25px; bottom: 0; background: rgba(255,255,255,.07); border-left: 1px dashed rgba(255,255,255,.12); border-right: 1px dashed rgba(255,255,255,.12); pointer-events: none; }
                 #SoundtrackFinderPage .tl-dot { position: absolute; bottom: 4px; width: 9px; height: 9px; margin-left: -4px; border-radius: 50%; border: 1px solid rgba(0,0,0,.5); }
                 #SoundtrackFinderPage .tl-dot.hit { background: #43a047; }
@@ -198,10 +200,12 @@
                     <input type="range" id="tlZoom" min="0" max="1000" value="0" class="stf-grow" style="max-width:260px" data-i18n-title="tl.zoomTitle" title="Zoom (auch Mausrad über der Leiste)">
                     <label class="stf-small"><input type="checkbox" id="tlShowSeg" checked> <span data-i18n="tl.showSeg">Musikabschnitte</span></label>
                     <label class="stf-small"><input type="checkbox" id="tlShowDots" checked> <span data-i18n="tl.showDots">Shazam-Punkte</span></label>
+                    <label class="stf-small"><input type="checkbox" id="tlShowThumbs" checked> <span data-i18n="tl.showThumbs">Vorschaubilder</span></label>
                 </div>
                 <div class="tl-mini" id="tlMini"></div>
                 <div class="tl-scroll" id="tlScroll">
                     <div class="tl-inner" id="tlInner">
+                        <div class="tl-thumbs" id="tlThumbs"></div>
                         <div class="tl-ruler" id="tlRuler"></div>
                         <div id="tlSegs"></div>
                         <div id="tlBlocks"></div>
@@ -262,6 +266,8 @@
                         <button type="button" class="stf-b primary" id="tlExportSong">In Jellyfin speichern</button>
                         <button type="button" class="stf-b" id="tlUnexportSong" data-i18n="d.unexport" data-i18n-title="d.unexportTitle" title="Die gespeicherte MP3 aus der Musik-Bibliothek löschen; der Song bleibt in der Timeline" style="display:none">Aus Jellyfin entfernen</button>
                         <a class="stf-b" id="tlAppleLink" target="_blank" rel="noopener" style="text-decoration:none">In Apple Music öffnen</a>
+                        <a class="stf-b" id="tlSpotifyLink" target="_blank" rel="noopener" style="text-decoration:none" data-i18n="d.spotify">In Spotify suchen</a>
+                        <a class="stf-b" id="tlYoutubeLink" target="_blank" rel="noopener" style="text-decoration:none" data-i18n="d.youtube">Auf YouTube suchen</a>
                         <button type="button" class="stf-b" id="tlMp3" data-i18n="d.mp3">Szene als MP3</button>
                         <button type="button" class="stf-b danger" id="tlDelete" data-i18n="d.delete">Löschen</button>
                         <button type="button" class="stf-b stf-admin" id="tlExclude" data-i18n-title="d.excludeTitle" title="Interpret auf die Ausschlussliste setzen und seine erkannten Songs aus allen Titeln entfernen">Interpret immer ausschließen</button>

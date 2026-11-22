@@ -1,7 +1,11 @@
 <!-- #claude -->
 # Changelog
 
-All versions target Jellyfin 12.4 (ABI `12.4.0.0`). Downloads (in [`releases_claude`](releases_claude) and in the Jellyfin catalog) are available for 1.0.0.0, 1.2.2.0, 1.2.3.0, 1.3.0.0, 1.3.1.0, 1.3.2.0 and 1.4.0.0 (1.1.x and 1.2.0–1.2.1 are lost); the source code in this repository is the current version.
+All versions target Jellyfin 12.4 (ABI `12.4.0.0`). Downloads (in [`releases_claude`](releases_claude) and in the Jellyfin catalog) are available for 1.0.0.0, 1.2.2.0, 1.2.3.0, 1.3.0.0, 1.3.1.0, 1.3.2.0, 1.4.0.0 and 1.5.0.0 (1.1.x and 1.2.0–1.2.1 are lost); the source code in this repository is the current version.
+
+## 1.5.0.0 – 2026-11-22
+- Preview images from the movie above the timeline, so you see which scene is playing. Cut once with ffmpeg and cached; can be turned off ("Preview images").
+- "Search on Spotify" and "Search on YouTube" next to the Apple Music link.
 
 ## 1.4.0.0 – 2026-11-22
 - Interface in English, German, French, Spanish and Italian. The pages follow the user's Jellyfin language (or the browser's) and have a language picker; error messages come in the same language.
