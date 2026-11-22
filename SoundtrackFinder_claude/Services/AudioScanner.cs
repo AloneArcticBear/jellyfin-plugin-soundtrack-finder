@@ -242,40 +242,6 @@ internal static class AudioScanner
         }
     }
 
-    /// <summary>Cuts a section of the audio track into an MP3 file and returns its bytes.</summary>
-    public static async Task<byte[]> CutMp3Async(string ffmpegPath, string mediaPath, double start, double end, string tempDir, int bitrateKbps, CancellationToken ct)
-    {
-        Directory.CreateDirectory(tempDir);
-        var outFile = Path.Combine(tempDir, "stf_" + Guid.NewGuid().ToString("N") + ".mp3");
-        double dur = Math.Max(1, end - start);
-        var inv = System.Globalization.CultureInfo.InvariantCulture;
-        try
-        {
-            await RunFfmpegAsync(
-                ffmpegPath,
-                new[]
-                {
-                    "-nostdin", "-hide_banner", "-loglevel", "error", "-y",
-                    "-ss", Math.Max(0, start).ToString("0.###", inv),
-                    "-i", mediaPath,
-                    "-t", dur.ToString("0.###", inv),
-                    "-map", "0:a:0", "-vn", "-ac", "2", "-c:a", "libmp3lame", "-b:a", bitrateKbps.ToString(inv) + "k", "-f", "mp3", outFile
-                },
-                ct).ConfigureAwait(false);
-            return await File.ReadAllBytesAsync(outFile, ct).ConfigureAwait(false);
-        }
-        finally
-        {
-            try
-            {
-                File.Delete(outFile);
-            }
-            catch (IOException)
-            {
-            }
-        }
-    }
-
     /// <summary>Formats seconds as h:mm:ss.</summary>
     public static string FormatTime(double seconds)
     {

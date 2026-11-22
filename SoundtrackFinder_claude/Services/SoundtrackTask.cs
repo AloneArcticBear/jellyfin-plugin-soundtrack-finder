@@ -25,13 +25,13 @@ public class SoundtrackTask : IScheduledTask
     }
 
     /// <inheritdoc />
-    public string Name => "Soundtrack Finder: Songs erkennen";
+    public string Name => Loc.T("srv.taskName");
 
     /// <inheritdoc />
     public string Key => "SoundtrackFinderAnalyze";
 
     /// <inheritdoc />
-    public string Description => "Erkennt per Shazam Songs in noch nicht analysierten Filmen und Folgen.";
+    public string Description => Loc.T("srv.taskDescription");
 
     /// <inheritdoc />
     public string Category => "Soundtrack Finder";

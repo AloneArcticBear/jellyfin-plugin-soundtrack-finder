@@ -14,6 +14,7 @@ using MediaBrowser.Controller.Entities.TV;
 using MediaBrowser.Controller.Library;
 using MediaBrowser.Controller.MediaEncoding;
 using MediaBrowser.Common.Configuration;
+using MediaBrowser.Controller.Configuration;
 using MediaBrowser.Model.Entities;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -49,8 +50,13 @@ public sealed class AnalysisService : IHostedService, IDisposable
     private Task? _worker;
 
     /// <summary>Initializes a new instance of the <see cref="AnalysisService"/> class.</summary>
-    public AnalysisService(ILibraryManager libraryManager, IMediaEncoder mediaEncoder, IApplicationPaths paths, ShazamClient shazam, ResultStore store, MusicExporter exporter, ILogger<AnalysisService> logger)
+    public AnalysisService(ILibraryManager libraryManager, IMediaEncoder mediaEncoder, IApplicationPaths paths, ShazamClient shazam, ResultStore store, MusicExporter exporter, ILogger<AnalysisService> logger, IServerConfigurationManager? serverConfig = null)
     {
+        if (serverConfig != null)
+        {
+            Loc.ServerCulture = () => serverConfig.Configuration.UICulture;
+        }
+
         _libraryManager = libraryManager;
         _mediaEncoder = mediaEncoder;
         _paths = paths;
@@ -63,8 +69,11 @@ public sealed class AnalysisService : IHostedService, IDisposable
     /// <summary>Gets the name of the title currently analyzed.</summary>
     public string? CurrentItem { get; private set; }
 
-    /// <summary>Gets the current phase.</summary>
-    public string Phase { get; private set; } = "Bereit";
+    /// <summary>Gets the current phase (text key: phase.idle / phase.music / phase.shazam).</summary>
+    public string Phase { get; private set; } = "phase.idle";
+
+    /// <summary>Gets the number of Shazam samples of the current title (for phase.shazam).</summary>
+    public int PhaseCount { get; private set; }
 
     /// <summary>Gets the progress of the current title (0..1).</summary>
     public double CurrentProgress { get; private set; }
@@ -111,6 +120,30 @@ public sealed class AnalysisService : IHostedService, IDisposable
         }
 
         return item.ProductionYear.HasValue ? $"{item.Name} ({item.ProductionYear})" : item.Name;
+    }
+
+    /// <summary>Queues all eligible titles for a new analysis (manual songs are kept); returns how many were queued.</summary>
+    public int EnqueueAll(bool includeAnalyzed)
+    {
+        var done = includeAnalyzed ? new HashSet<Guid>() : _store.All().Where(r => r.Analyzed).Select(r => r.ItemId).ToHashSet();
+        var queued = _queue.ToHashSet();
+        int n = 0;
+        foreach (var i in GetEligibleItems().Where(i => !done.Contains(i.Id)))
+        {
+            if (queued.Add(i.Id))
+            {
+                _queue.Enqueue(i.Id);
+                _queueSignal.Release();
+                n++;
+            }
+        }
+
+        if (includeAnalyzed && n > 0)
+        {
+            _logger.LogInformation("Soundtrack Finder: {Count} Titel werden neu analysiert", n);
+        }
+
+        return n;
     }
 
     /// <summary>Queues a manual analysis.</summary>
@@ -182,7 +215,7 @@ public sealed class AnalysisService : IHostedService, IDisposable
         {
             CurrentItem = DisplayName(item);
             CurrentProgress = 0;
-            Phase = "Musik suchen";
+            Phase = "phase.music";
             _logger.LogInformation("Soundtrack Finder analysiert {Name}", CurrentItem);
 
             double duration = item.RunTimeTicks.HasValue ? TimeSpan.FromTicks(item.RunTimeTicks.Value).TotalSeconds : 0;
@@ -198,7 +231,8 @@ public sealed class AnalysisService : IHostedService, IDisposable
                 snippets = Enumerable.Range(0, cfg.MaxRequestsPerItem).Select(i => snippets[(int)(i * step)]).ToList();
             }
 
-            Phase = $"Shazam ({snippets.Count} Ausschnitte)";
+            PhaseCount = snippets.Count;
+            Phase = "phase.shazam";
             var hits = new List<(double Time, ShazamMatch Match)>();
             var snippetInfos = new List<SnippetInfo>();
             for (int i = 0; i < snippets.Count; i++)
@@ -297,7 +331,7 @@ public sealed class AnalysisService : IHostedService, IDisposable
         {
             CurrentItem = null;
             CurrentProgress = 0;
-            Phase = "Bereit";
+            Phase = "phase.idle";
             _runLock.Release();
         }
     }
@@ -376,7 +410,7 @@ public sealed class AnalysisService : IHostedService, IDisposable
         {
             // right under the heading: Jellyfin-Web only shows the first 6 lines of a description before "Mehr".
             // Opens exactly this title on the Soundtracks page (new tab); rendered as "🎵 Songs ▶ anhören & bearbeiten".
-            sb.Append("\n[▶ anhören & bearbeiten](").Append(AppUrl(r.ItemId)).Append(')');
+            sb.Append("\n[").Append(Loc.T("srv.overviewLink")).Append("](").Append(AppUrl(r.ItemId)).Append(')');
         }
 
         sb.Append('\n');

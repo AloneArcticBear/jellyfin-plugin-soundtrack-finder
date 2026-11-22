@@ -2,11 +2,19 @@
   {
     "guid": "5f3c1a2e-9b7d-4c1e-a8f2-6d0e3b9c7a41",
     "name": "Soundtrack Finder",
-    "description": "Recognizes the songs in your movies and TV episodes with Shazam, lists them in each title's description, lets you fix them on a timeline editor, and saves them as tagged MP3s to a Jellyfin music library. Includes a 'Now playing' pop-up, search and statistics. User interface in German.",
+    "description": "Recognizes the songs in your movies and TV episodes with Shazam, lists them in each title's description, lets you fix them on a timeline editor, and saves them as tagged MP3s to a Jellyfin music library. Includes a 'Now playing' pop-up, search and statistics. User interface in English, German, French, Spanish and Italian.",
     "overview": "Find, edit and save the songs in your movies and series",
     "owner": "AloneArcticBear",
     "category": "Metadata",
     "versions": [
+      {
+        "version": "1.4.0.0",
+        "changelog": "Interface in English, German, French, Spanish and Italian (automatic or chosen on the page); 'Re-analyze all'; remove saved songs from Jellyfin (per song and per title); 'Scene as MP3' gets proper tags and cover instead of the movie file's title.",
+        "targetAbi": "12.4.0.0",
+        "sourceUrl": "https://raw.githubusercontent.com/AloneArcticBear/jellyfin-plugin-soundtrack-finder/main/releases_claude/v1.4.0.0/soundtrack-finder_1.4.0.0_claude.zip",
+        "checksum": "8450ccc2eccb2151e0d577942e1bad89",
+        "timestamp": "2026-11-22T16:47:14Z"
+      },
       {
         "version": "1.3.2.0",
         "changelog": "'Now playing' pop-ups reach every open Jellyfin Web tab/window of a browser (Jellyfin only sent them to the last active one); timing based on the player's own reports only; clearer diagnostics after a server restart.",

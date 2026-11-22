@@ -1,6 +1,7 @@
 // #claude
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Jellyfin.Plugin.SoundtrackFinder.Configuration;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
@@ -21,6 +22,15 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
         : base(applicationPaths, xmlSerializer)
     {
         Instance = this;
+
+        // language of texts in Jellyfin: versions before 1.4 wrote German; new installations follow the server language
+        // (checked before the configuration is read, because reading creates the file)
+        bool upgrade = File.Exists(ConfigurationFilePath);
+        if (Configuration.TextLanguage == null)
+        {
+            Configuration.TextLanguage = upgrade ? "de" : string.Empty;
+            SaveConfiguration();
+        }
     }
 
     /// <summary>Gets the current plugin instance.</summary>
@@ -33,7 +43,7 @@ public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
     public override Guid Id => Guid.Parse("5f3c1a2e-9b7d-4c1e-a8f2-6d0e3b9c7a41");
 
     /// <inheritdoc />
-    public override string Description => "Erkennt Songs in Filmen und Serien per Shazam, zeigt sie auf einer Timeline zum Bearbeiten und speichert sie auf Wunsch als Musik in Jellyfin.";
+    public override string Description => "Recognizes the songs in movies and series with Shazam, shows them on a timeline for editing and saves them as music in Jellyfin. / Erkennt Songs in Filmen und Serien per Shazam, zeigt sie auf einer Timeline und speichert sie als Musik in Jellyfin.";
 
     /// <inheritdoc />
     public IEnumerable<PluginPageInfo> GetPages()

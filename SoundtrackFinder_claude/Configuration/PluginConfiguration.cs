@@ -68,4 +68,11 @@ public class PluginConfiguration : BasePluginConfiguration
 
     /// <summary>Gets or sets the album artist tag of saved songs.</summary>
     public string ExportAlbumArtist { get; set; } = "Soundtracks";
+
+    /// <summary>
+    /// Gets or sets the language of texts written into Jellyfin (link in the description, scheduled task,
+    /// folders/comments of saved songs): "de", "en", "fr", "es", "it", or empty = Jellyfin's server language.
+    /// Null only in configurations saved by versions before 1.4 (they get "de", the language they used).
+    /// </summary>
+    public string? TextLanguage { get; set; }
 }

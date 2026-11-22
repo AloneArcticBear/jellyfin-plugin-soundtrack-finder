@@ -47,6 +47,16 @@ public class AppPageController : ControllerBase
         return Content(html, "text/html; charset=utf-8");
     }
 
+    /// <summary>Texts of the page in a language (de, en, fr, es, it; missing texts in English/German).</summary>
+    [HttpGet("I18n/{lang}")]
+    [Produces("application/json")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public ActionResult I18n([FromRoute] string lang)
+    {
+        Response.Headers.CacheControl = "no-cache";
+        return new JsonResult(Services.Loc.Dictionary(lang));
+    }
+
     /// <summary>Start script of the page.</summary>
     [HttpGet("AppScript")]
     [Produces("text/javascript")]

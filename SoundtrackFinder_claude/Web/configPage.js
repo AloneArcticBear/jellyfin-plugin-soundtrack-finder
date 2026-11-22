@@ -12,6 +12,93 @@ const MAX_PPS = 60; // pixels per second at maximum zoom
 const MIN_LEN = 1; // seconds
 const UNDO_MAX = 40;
 
+// ---------- languages ----------
+// texts come from Web/i18n/<lang>.json (served by /SoundtrackFinder/I18n/<lang>); German is the source language
+const LANGS = { de: 'Deutsch', en: 'English', fr: 'Français', es: 'Español', it: 'Italiano' };
+let L = {};
+let LANG = 'de';
+
+function T(key, p) {
+    let s = L[key];
+    if (s === undefined) s = key;
+    if (p) s = s.replace(/\{(\w+)\}/g, (m, k) => (p[k] !== undefined && p[k] !== null ? String(p[k]) : m));
+    return s;
+}
+
+// plural: key.one / key.other with {n}
+function Tn(key, n, p) {
+    return T(key + (n === 1 ? '.one' : '.other'), Object.assign({ n }, p));
+}
+
+function pickLang(code) {
+    const c = String(code || '').toLowerCase().slice(0, 2);
+    return LANGS[c] ? c : null;
+}
+
+function chosenLang() {
+    try {
+        return pickLang(localStorage.getItem('stf-lang'));
+    } catch {
+        return null;
+    }
+}
+
+// own choice on this page > Jellyfin display language > browser language
+function detectLang(inJellyfinWeb) {
+    const own = chosenLang();
+    if (own) return own;
+    if (inJellyfinWeb) {
+        const l = pickLang(document.documentElement.lang);
+        if (l) return l;
+    }
+    try {
+        const uid = window.ApiClient && ApiClient.getCurrentUserId && ApiClient.getCurrentUserId();
+        const l = uid && pickLang(localStorage.getItem(uid + '-language'));
+        if (l) return l;
+    } catch {
+        // storage not available
+    }
+    for (const x of (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language])) {
+        const l = pickLang(x);
+        if (l) return l;
+    }
+    return 'en';
+}
+
+let loadedLang = null;
+
+async function loadLanguage(inJellyfinWeb) {
+    LANG = detectLang(inJellyfinWeb);
+    if (!inJellyfinWeb) document.documentElement.lang = LANG;
+    if (loadedLang === LANG) return;
+    try {
+        const r = await fetch(ApiClient.getUrl('SoundtrackFinder/I18n/' + LANG));
+        if (r.ok) {
+            L = await r.json();
+            loadedLang = LANG;
+        }
+    } catch {
+        // texts stay in German (built into the page)
+    }
+}
+
+function applyStatic(root) {
+    root.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = T(el.dataset.i18n); });
+    root.querySelectorAll('[data-i18n-html]').forEach(el => { el.innerHTML = T(el.dataset.i18nHtml); });
+    root.querySelectorAll('[data-i18n-title]').forEach(el => { el.title = T(el.dataset.i18nTitle); });
+    root.querySelectorAll('[data-i18n-placeholder]').forEach(el => { el.placeholder = T(el.dataset.i18nPlaceholder); });
+    root.querySelectorAll('[data-i18n-label]').forEach(el => {
+        const txt = T(el.dataset.i18nLabel);
+        el.setAttribute('label', txt);
+        if (typeof el.label === 'function') {
+            el.label(txt); // emby-input that is already set up
+        } else {
+            const lbl = el.parentNode && el.parentNode.querySelector('label');
+            if (lbl) lbl.textContent = txt;
+        }
+    });
+}
+
 // ---------- helpers ----------
 
 function esc(s) {
@@ -62,8 +149,8 @@ function colorFor(s) {
 }
 
 function songName(s) {
-    const t = s.title || 'Unbenannt';
-    return s.artist ? `${s.artist} – ${t}` : t;
+    const name = s.title || T('common.untitled');
+    return s.artist ? `${s.artist} – ${name}` : name;
 }
 
 function clamp(v, lo, hi) {
@@ -91,17 +178,17 @@ function apiUrl(path) {
 async function errorText(e) {
     if (e && typeof e.text === 'function') {
         try {
-            const t = await e.text();
-            if (!t) return 'Fehler ' + (e.status || '');
+            const body = await e.text();
+            if (!body) return T('common.error', { code: e.status || '' });
             try {
-                const j = JSON.parse(t);
+                const j = JSON.parse(body);
                 if (typeof j === 'string') return j;
-                return j.detail || j.title || t;
+                return j.detail || j.title || body;
             } catch {
-                return t;
+                return body;
             }
         } catch {
-            return 'Fehler ' + (e.status || '');
+            return T('common.error', { code: e.status || '' });
         }
     }
     return (e && e.message) || String(e);
@@ -114,7 +201,8 @@ async function call(method, path, body, json) {
             url: apiUrl(path),
             data: body !== undefined ? JSON.stringify(body) : undefined,
             contentType: body !== undefined ? 'application/json' : undefined,
-            dataType: json ? 'json' : undefined
+            dataType: json ? 'json' : undefined,
+            headers: { 'X-STF-Lang': LANG }
         });
     } catch (e) {
         throw new Error(await errorText(e));
@@ -130,7 +218,7 @@ async function getBlob(path) {
     }
     if (res && typeof res.blob === 'function') return res.blob();
     const r = await fetch(apiUrl(path), { headers: { Authorization: `MediaBrowser Token="${ApiClient.accessToken()}"` } });
-    if (!r.ok) throw new Error('Fehler ' + r.status);
+    if (!r.ok) throw new Error(T('common.error', { code: r.status }));
     return r.blob();
 }
 
@@ -148,13 +236,12 @@ function toDto(s) {
 }
 
 function changedBy(s) {
-    if (!s.modifiedBy) return 'manuell geändert';
-    let when = '';
+    if (!s.modifiedBy) return T('changed.manual');
     if (s.modifiedAt) {
         const d = new Date(s.modifiedAt);
-        if (!isNaN(d)) when = ' am ' + d.toLocaleDateString('de-DE') + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+        if (!isNaN(d)) return T('changed.byAt', { name: s.modifiedBy, date: d.toLocaleDateString(LANG) + ' ' + d.toLocaleTimeString(LANG, { hour: '2-digit', minute: '2-digit' }) });
     }
-    return `geändert von ${s.modifiedBy}${when}`;
+    return T('changed.by', { name: s.modifiedBy });
 }
 
 function songsSignature(list) {
@@ -162,10 +249,13 @@ function songsSignature(list) {
 }
 
 function stateBadge(state) {
-    if (state === 'saved') return '<span class="stf-badge saved" title="In Jellyfin gespeichert">✓ in Jellyfin</span>';
-    if (state === 'stale') return '<span class="stf-badge stale" title="Nach dem Speichern geändert – erneut speichern">⟳ neu speichern</span>';
+    if (state === 'saved') return `<span class="stf-badge saved" title="${esc(T('badge.savedTitle'))}">${esc(T('badge.saved'))}</span>`;
+    if (state === 'stale') return `<span class="stf-badge stale" title="${esc(T('badge.staleTitle'))}">${esc(T('badge.stale'))}</span>`;
     return '';
 }
+
+// used by the start script of the Soundtracks page (appStart.js)
+export { loadLanguage, applyStatic, T, LANGS };
 
 // ---------- page ----------
 
@@ -196,6 +286,31 @@ export default function (view) {
     let statusTimer = null;
     let rafTicks = 0;
 
+    // language: own choice on this page, otherwise Jellyfin's/the browser's language
+    function setupLangPicker() {
+        // on the Soundtracks page the picker sits in the top bar (moved there by appStart.js)
+        new Set([...view.querySelectorAll('.stf-lang'), ...document.querySelectorAll('.app-top .stf-lang')]).forEach(sel => {
+            sel.innerHTML = `<option value="">${esc(T('lang.auto'))}</option>`
+                + Object.entries(LANGS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
+            sel.value = chosenLang() || '';
+            sel.addEventListener('change', () => {
+                try {
+                    if (sel.value) localStorage.setItem('stf-lang', sel.value);
+                    else localStorage.removeItem('stf-lang');
+                } catch {
+                    // storage blocked: nothing to remember
+                }
+                location.reload();
+            });
+        });
+    }
+
+    const ready = (async () => {
+        await loadLanguage(!userMode);
+        applyStatic(view);
+        setupLangPicker();
+    })();
+
     // ----- toast -----
     function toast(msg, isErr) {
         const d = document.createElement('div');
@@ -225,21 +340,23 @@ export default function (view) {
         try {
             const s = await call('GET', 'Status', undefined, true);
             const pct = s.total ? Math.round(100 * s.analyzed / s.total) : 0;
+            st.total = s.total;
             $('#stfStatusText').innerHTML =
-                `<b>${s.analyzed} von ${s.total}</b> Filmen/Folgen analysiert (${pct} %), ${s.withSongs} mit Songs.` +
+                T('status.analyzed', { done: s.analyzed, total: s.total, pct, withSongs: s.withSongs }) +
                 (s.remaining > 0 ? (s.averageSeconds
-                    ? ` Geschätzte Restzeit: <b>${fmtDuration(s.etaSeconds)}</b> (Ø ${fmtDuration(s.averageSeconds)} pro Titel)`
-                    : ' Restzeit: wird nach dem ersten analysierten Titel geschätzt.') : '');
+                    ? T('status.eta', { eta: fmtDuration(s.etaSeconds), avg: fmtDuration(s.averageSeconds) })
+                    : T('status.etaUnknown')) : '');
             $('#stfTotalBar').style.width = pct + '%';
             if (s.currentItem) {
-                $('#stfCurrent').textContent = `Läuft${s.taskRunning ? ' (geplante Aufgabe)' : ''}: ${s.currentItem} – ${s.phase} – ${Math.round(s.progress * 100)} %` + (s.queue ? ` · ${s.queue} in der Warteschlange` : '');
+                $('#stfCurrent').textContent = T(s.taskRunning ? 'status.runningTask' : 'status.running', { item: s.currentItem, phase: s.phase, pct: Math.round(s.progress * 100) })
+                    + (s.queue ? ' · ' + T('status.queue', { n: s.queue }) : '');
                 $('#stfItemBar').style.width = Math.round(s.progress * 100) + '%';
             } else {
-                $('#stfCurrent').textContent = s.queue ? `${s.queue} in der Warteschlange` : 'Keine Analyse aktiv.';
+                $('#stfCurrent').textContent = s.queue ? T('status.queue', { n: s.queue }) : T('status.idle');
                 $('#stfItemBar').style.width = '0';
             }
             $('#stfExportStatus').textContent = s.exportRunning
-                ? `Speichere in Jellyfin: ${s.exportDone} von ${s.exportTotal} Titeln${s.exportCurrent ? ' – ' + s.exportCurrent : ''}`
+                ? T('status.exporting', { done: s.exportDone, total: s.exportTotal }) + (s.exportCurrent ? ' – ' + s.exportCurrent : '')
                 : '';
             const appUrl = new URL(s.appUrl || '/SoundtrackFinder/App', location.href).href;
             $('#stfAppLink').href = appUrl;
@@ -256,7 +373,7 @@ export default function (view) {
             }
             st.lastRunning = s.currentItem;
         } catch {
-            $('#stfStatusText').textContent = 'Status konnte nicht geladen werden.';
+            $('#stfStatusText').textContent = T('status.failed');
         }
     }
 
@@ -283,38 +400,38 @@ export default function (view) {
         const res = await call('GET', 'Search?q=' + encodeURIComponent(q), undefined, true);
         if (seq !== searchSeq) return; // a newer search is running
         if (!res.songs.length) {
-            box.innerHTML = `<div class="stf-small" style="padding:.5em 0">Nichts gefunden für „${esc(q)}“.</div>`;
+            box.innerHTML = `<div class="stf-small" style="padding:.5em 0">${esc(T('search.nothing', { q }))}</div>`;
             return;
         }
-        box.innerHTML = `<div class="stf-small" style="padding:.2em 0">${res.total} ${res.total === 1 ? 'Song' : 'Songs'} gefunden${res.total > res.songs.length ? ` (die ersten ${res.songs.length} angezeigt)` : ''}:</div>` +
+        box.innerHTML = `<div class="stf-small" style="padding:.2em 0">${esc(T('search.found', { songs: Tn('count.songs', res.total) }))}${res.total > res.songs.length ? esc(T('search.firstShown', { n: res.songs.length })) : ''}:</div>` +
             res.songs.map(sg => `
             <div class="sr-song">
                 <b>${esc(sg.artist ? sg.artist + ' – ' : '')}${esc(sg.title)}</b>
-                <span class="stf-small">in ${sg.titleCount} ${sg.titleCount === 1 ? 'Titel' : 'Titeln'}</span><br>
-                ${sg.occurrences.map(o => `<button type="button" class="sr-occ" data-item="${esc(o.itemId)}" data-song="${esc(o.songId)}" title="Auf der Timeline öffnen">${esc(o.itemName)} · ${fmtTime(o.start)}</button>`).join('')}
+                <span class="stf-small">${esc(Tn('search.inTitles', sg.titleCount))}</span><br>
+                ${sg.occurrences.map(o => `<button type="button" class="sr-occ" data-item="${esc(o.itemId)}" data-song="${esc(o.songId)}" title="${esc(T('search.openTimeline'))}">${esc(o.itemName)} · ${fmtTime(o.start)}</button>`).join('')}
             </div>`).join('');
     }
 
     async function loadStats() {
         const s = await call('GET', 'Stats', undefined, true);
         $('#stTotals').innerHTML = s.entries ? `
-            <span><b>${s.titlesWithSongs}</b> Titel mit Songs</span>
-            <span><b>${s.distinctSongs}</b> verschiedene Songs</span>
-            <span><b>${s.distinctArtists}</b> Interpreten</span>
-            <span><b>${fmtDuration(s.totalMinutes * 60)}</b> Musik insgesamt</span>` : 'Noch keine Songs erkannt.';
+            <span><b>${s.titlesWithSongs}</b> ${esc(T('stats.titlesWithSongs'))}</span>
+            <span><b>${s.distinctSongs}</b> ${esc(T('stats.distinctSongs'))}</span>
+            <span><b>${s.distinctArtists}</b> ${esc(T('stats.artists'))}</span>
+            <span><b>${fmtDuration(s.totalMinutes * 60)}</b> ${esc(T('stats.totalMusic'))}</span>` : esc(T('stats.none'));
         const bars = (list, label, value, sub) => {
             const max = Math.max(1, ...list.map(value));
             return list.map(x => `
-                <div class="st-row" data-q="${esc(label(x))}" title="Suchen: ${esc(label(x))}">
+                <div class="st-row" data-q="${esc(label(x))}" title="${esc(T('stats.searchFor', { q: label(x) }))}">
                     <span class="st-name">${esc(label(x))}</span>
                     <span class="stf-small" style="white-space:nowrap">${sub(x)}</span>
                     <div class="st-bar" style="width:${Math.max(3, 100 * value(x) / max)}%"></div>
                 </div>`).join('') || '<div class="stf-small">–</div>';
         };
         $('#stArtists').innerHTML = bars(s.topArtists, a => a.artist, a => a.titles,
-            a => `${a.titles} ${a.titles === 1 ? 'Titel' : 'Titel'} · ${a.songs} ${a.songs === 1 ? 'Song' : 'Songs'}`);
+            a => `${esc(Tn('count.titles', a.titles))} · ${esc(Tn('count.songs', a.songs))}`);
         $('#stSongs').innerHTML = bars(s.topSongs, x => (x.artist ? x.artist + ' – ' : '') + x.title, x => x.titles,
-            x => `${x.titles} ${x.titles === 1 ? 'Titel' : 'Titel'}${x.count > x.titles ? ` · ${x.count}×` : ''}`);
+            x => `${esc(Tn('count.titles', x.titles))}${x.count > x.titles ? ` · ${x.count}×` : ''}`);
     }
 
     async function openSong(itemId, songId) {
@@ -340,20 +457,18 @@ export default function (view) {
             return;
         }
         const html = !s.devices.length
-            ? 'Gerade läuft bei dir nichts. Starte einen Film mit Songs – hier siehst du dann, ob und wann eingeblendet wird.'
+            ? esc(T('np.nothing'))
             : s.devices.map(d => {
-                const where = `<b>${esc(d.item)}</b> auf ${esc(d.device)} (${esc(d.client)}) bei ${fmtTime(d.position)}${d.paused ? ' – pausiert' : ''}`;
+                const where = T('np.where', { item: esc(d.item), device: esc(d.device), client: esc(d.client), time: fmtTime(d.position) }) + (d.paused ? esc(T('np.paused')) : '');
                 if (!d.supports) {
-                    return /web/i.test(d.client || '')
-                        ? `▶ ${where}<br>⚠ Der Browser hat sich noch nicht für Einblendungen gemeldet (passiert nach einem Jellyfin-Neustart). Lade den Tab, in dem das Video läuft, einmal neu.`
-                        : `▶ ${where}<br>❌ Diese App kann keine Einblendungen anzeigen (sie unterstützt keine Server-Nachrichten).`;
+                    return `▶ ${where}<br>` + esc(T(/web/i.test(d.client || '') ? 'np.browserNotReady' : 'np.unsupported'));
                 }
-                if (!s.enabled) return `▶ ${where}<br>Einblendungen sind ausgeschaltet.`;
-                if (!d.songCount) return `▶ ${where}<br>Für diesen Titel sind keine Songs erkannt.`;
-                return `▶ ${where}<br>✓ Einblendungen aktiv` +
-                    (d.current ? ` · läuft gerade: ${esc(d.current)}` : '') +
-                    (d.next ? ` · nächster Song bei ${fmtTime(d.nextStart)}: ${esc(d.next)}` : ' · danach kein weiterer Song') +
-                    (d.connections > 1 ? `<br>ℹ ${d.connections} Jellyfin-Fenster/Tabs dieses Geräts sind offen – die Einblendung erscheint in allen.` : '');
+                if (!s.enabled) return `▶ ${where}<br>` + esc(T('np.off'));
+                if (!d.songCount) return `▶ ${where}<br>` + esc(T('np.noSongs'));
+                return `▶ ${where}<br>` + esc(T('np.active')) +
+                    (d.current ? esc(T('np.current', { song: d.current })) : '') +
+                    (d.next ? esc(T('np.next', { time: fmtTime(d.nextStart), song: d.next })) : esc(T('np.noNext'))) +
+                    (d.connections > 1 ? '<br>' + esc(T('np.tabs', { n: d.connections })) : '');
             }).join('<br><br>');
         boxes.forEach(b => { b.innerHTML = html; });
     }
@@ -362,12 +477,12 @@ export default function (view) {
         try {
             const res = await call('POST', 'Me/NowPlaying/Test', undefined, true);
             if (!res.devices.length) {
-                toast('Du bist auf keinem Gerät angemeldet, das gerade mit Jellyfin verbunden ist.', true);
+                toast(T('np.noDevice'), true);
                 return;
             }
-            const ok = res.devices.filter(d => d.sent).map(d => `${d.device} (${d.client})` + (d.connections > 1 ? ` – ${d.connections} Fenster/Tabs` : ''));
+            const ok = res.devices.filter(d => d.sent).map(d => `${d.device} (${d.client})` + (d.connections > 1 ? T('np.tabsShort', { n: d.connections }) : ''));
             const no = res.devices.filter(d => !d.sent).map(d => `${d.device} (${d.client})`);
-            toast((ok.length ? 'Test gesendet an: ' + ok.join(', ') + '.' : '') + (no.length ? ' Kann keine Einblendungen: ' + no.join(', ') + '.' : ''), !ok.length);
+            toast((ok.length ? T('np.testSent', { list: ok.join(', ') }) : '') + (no.length ? T('np.testUnsupported', { list: no.join(', ') }) : ''), !ok.length);
         } catch (err) {
             toast(err.message, true);
         }
@@ -382,7 +497,7 @@ export default function (view) {
     function openFromAddress() {
         if (!userMode) return;
         const id = new URLSearchParams(location.search).get('item');
-        if (id) openItem(id).catch(() => toast('Dieser Titel ist nicht verfügbar (oder du hast keinen Zugriff).', true));
+        if (id) openItem(id).catch(() => toast(T('toast.itemUnavailable'), true));
     }
 
     function rememberInAddress(id) {
@@ -405,14 +520,14 @@ export default function (view) {
         $('#stfItems').innerHTML = list.length ? list.map(i => `
             <tr class="stf-row${i.id === openId ? ' sel' : ''}" data-id="${esc(i.id)}">
                 <td>${esc(i.name)}${i.error ? ` <span class="stf-small">⚠ ${esc(i.error)}</span>` : ''}</td>
-                <td class="stf-small">${i.analyzed ? (i.songs ? i.songs + (i.songs === 1 ? ' Song' : ' Songs') : 'keine Treffer') : 'offen'}${i.exported ? ` · ${i.exported} in Jellyfin` : ''}</td>
-                <td style="text-align:right"><button type="button" class="stf-b stf-an stf-admin" data-id="${esc(i.id)}">${i.analyzed ? 'Neu analysieren' : 'Jetzt analysieren'}</button></td>
-            </tr>`).join('') : '<tr><td class="stf-small">Keine Einträge.</td></tr>';
+                <td class="stf-small">${esc(i.analyzed ? (i.songs ? Tn('count.songs', i.songs) : T('list.noMatches')) : T('list.notAnalyzed'))}${i.exported ? esc(T('list.inJellyfin', { n: i.exported })) : ''}</td>
+                <td style="text-align:right"><button type="button" class="stf-b stf-an stf-admin" data-id="${esc(i.id)}">${esc(T(i.analyzed ? 'list.reanalyze' : 'list.analyze'))}</button></td>
+            </tr>`).join('') : `<tr><td class="stf-small">${esc(T('list.empty'))}</td></tr>`;
     }
 
     async function analyze(id) {
         await call('POST', `Items/${id}/Analyze`);
-        toast('Analyse gestartet (bzw. in die Warteschlange gestellt).');
+        toast(T('toast.analyzeStarted'));
         loadStatus();
     }
 
@@ -558,13 +673,13 @@ export default function (view) {
         const segTime = unionLength(it.musicSegments.map(m => [m.start, m.end]));
         const saved = list.filter(s => s.exportState === 'saved').length;
         const stale = list.filter(s => s.exportState === 'stale').length;
-        let txt = `${list.length} ${list.length === 1 ? 'Song' : 'Songs'} · ${fmtDuration(songTime)} mit Songs · Laufzeit ${fmtTime(runtime())}`;
-        if (it.musicSegments.length) txt += ` · ${fmtDuration(segTime)} Musik vermutet`;
-        if (it.snippets.length) txt += ` · ${it.snippets.filter(x => x.matched).length}/${it.snippets.length} Ausschnitte erkannt`;
-        if (saved || stale) txt += ` · ${saved} in Jellyfin gespeichert` + (stale ? `, ${stale} geändert` : '');
-        if (!it.analyzed) txt += ' · noch nicht analysiert';
-        else if (!it.musicSegments.length && !it.snippets.length) txt += ' · Musikabschnitte und Shazam-Punkte erscheinen nach „Neu analysieren“';
-        if (it.error) txt += ` · Fehler: ${it.error}`;
+        let txt = T('tl.summarySongs', { songs: Tn('count.songs', list.length), time: fmtDuration(songTime), runtime: fmtTime(runtime()) });
+        if (it.musicSegments.length) txt += T('tl.summaryMusic', { time: fmtDuration(segTime) });
+        if (it.snippets.length) txt += T('tl.summarySnippets', { hit: it.snippets.filter(x => x.matched).length, total: it.snippets.length });
+        if (saved || stale) txt += T('tl.summarySaved', { n: saved }) + (stale ? T('tl.summaryStale', { n: stale }) : '');
+        if (!it.analyzed) txt += T('tl.summaryNotAnalyzed');
+        else if (!it.musicSegments.length && !it.snippets.length) txt += T('tl.summaryOld');
+        if (it.error) txt += T('tl.summaryError', { error: it.error });
         $('#tlSummary').textContent = txt;
 
         const w = $('#tlWarn');
@@ -572,9 +687,13 @@ export default function (view) {
         w.textContent = it.exportWarning ? '⚠ ' + it.exportWarning : '';
         const exp = $('#tlExportItem');
         exp.disabled = !it.exportPossible || !list.length;
-        exp.textContent = stale ? `Geänderte + alle Songs in Jellyfin speichern` : 'Alle Songs in Jellyfin speichern';
+        exp.textContent = T(stale ? 'tl.exportItemStale' : 'tl.exportItem');
+        const unexp = $('#tlUnexportItem');
+        unexp.style.display = saved || stale ? '' : 'none';
+        unexp.classList.remove('confirm');
+        unexp.textContent = T('tl.unexportItem');
         $('#tlUndo').disabled = !st.undo.length;
-        $('#tlUndo').textContent = st.undo.length ? `↶ Rückgängig (${st.undo.length})` : '↶ Rückgängig';
+        $('#tlUndo').textContent = st.undo.length ? T('tl.undoCount', { n: st.undo.length }) : T('tl.undo');
     }
 
     function renderTimeline() {
@@ -587,7 +706,7 @@ export default function (view) {
         inner.style.height = (RULER_H + 8 + st.laneCount * LANE_H + DOTS_H) + 'px';
 
         $('#tlSegs').innerHTML = st.showSeg ? it.musicSegments.map(m =>
-            `<div class="tl-seg" style="left:${m.start * pps}px;width:${Math.max(1, (m.end - m.start) * pps)}px" title="Vermutete Musik ${fmtTime(m.start)} – ${fmtTime(m.end)}"></div>`).join('') : '';
+            `<div class="tl-seg" style="left:${m.start * pps}px;width:${Math.max(1, (m.end - m.start) * pps)}px" title="${esc(T('tl.segTitle', { from: fmtTime(m.start), to: fmtTime(m.end) }))}"></div>`).join('') : '';
 
         const counts = new Map();
         for (const s of it.songs) counts.set(songKey(s), (counts.get(songKey(s)) || 0) + 1);
@@ -596,9 +715,9 @@ export default function (view) {
             const icon = s.exportState === 'saved' ? '✓' : (s.exportState === 'stale' ? '⟳' : '');
             return `<div class="tl-block${s.id === st.sel ? ' sel' : ''}" data-id="${esc(s.id)}"
                     style="background:${colorFor(s)}"
-                    title="${esc(songName(s))}&#10;${fmtTime(s.start)} – ${fmtTime(s.end)} (${fmtDuration(s.end - s.start)})${n > 1 ? `&#10;${n}× in diesem Titel` : ''}">
+                    title="${esc(songName(s))}&#10;${fmtTime(s.start)} – ${fmtTime(s.end)} (${fmtDuration(s.end - s.start)})${n > 1 ? '&#10;' + esc(T('tl.timesInTitle', { n })) : ''}">
                     <div class="h l"></div>
-                    <div class="lbl"><b>${esc(s.title || 'Unbenannt')}</b>${n > 1 ? ` <span class="stf-badge">${n}×</span>` : ''}<br><small>${esc(s.artist)}</small></div>
+                    <div class="lbl"><b>${esc(s.title || T('common.untitled'))}</b>${n > 1 ? ` <span class="stf-badge">${n}×</span>` : ''}<br><small>${esc(s.artist)}</small></div>
                     ${icon ? `<span class="st">${icon}</span>` : ''}
                     <div class="h r"></div>
                 </div>`;
@@ -608,7 +727,7 @@ export default function (view) {
         $('#tlDots').innerHTML = st.showDots ? it.snippets.map(d => {
             const center = d.start + 6;
             const cls = d.excluded ? 'excl' : (d.matched ? 'hit' : 'miss');
-            const tip = d.excluded ? 'ausgeschlossen: ' + d.label : (d.matched ? d.label : 'nichts erkannt');
+            const tip = d.excluded ? T('tl.dotExcluded', { label: d.label }) : (d.matched ? d.label : T('tl.dotNothing'));
             return `<div class="tl-dot ${cls}" data-t="${d.start}" style="left:${center * pps}px" title="${fmtTime(d.start)}: ${esc(tip)}"></div>`;
         }).join('') : '';
 
@@ -692,30 +811,31 @@ export default function (view) {
         }
         box.style.display = '';
         const n = st.item.songs.filter(x => songKey(x) === songKey(s)).length;
-        $('#tlDetailHead').textContent = songName(s) + (n > 1 ? ` (${n}× in diesem Titel)` : '') + (s.manual ? ' · ✎ ' + changedBy(s) : '');
+        $('#tlDetailHead').textContent = songName(s) + (n > 1 ? ` (${T('tl.timesInTitle', { n })})` : '') + (s.manual ? ' · ✎ ' + changedBy(s) : '');
         $('#tlDetailState').innerHTML = stateBadge(s.exportState);
         fillDetailFields(s);
         $('#tlApple').value = s.appleMusicUrl || '';
         const link = $('#tlAppleLink');
         if (s.appleMusicUrl) {
             link.href = s.appleMusicUrl;
-            link.textContent = 'In Apple Music öffnen';
+            link.textContent = T('d.appleOpen');
         } else {
-            link.href = 'https://music.apple.com/de/search?term=' + encodeURIComponent(((s.artist || '') + ' ' + (s.title || '')).trim());
-            link.textContent = 'In Apple Music suchen';
+            link.href = 'https://music.apple.com/search?term=' + encodeURIComponent(((s.artist || '') + ' ' + (s.title || '')).trim());
+            link.textContent = T('d.appleSearch');
         }
         const exp = $('#tlExportSong');
         exp.disabled = !st.item.exportPossible;
-        exp.textContent = s.exportState === 'saved' ? 'In Jellyfin gespeichert ✓' : (s.exportState === 'stale' ? 'Erneut in Jellyfin speichern' : 'In Jellyfin speichern');
+        exp.textContent = T(s.exportState === 'saved' ? 'd.exported' : (s.exportState === 'stale' ? 'd.reexport' : 'd.export'));
+        $('#tlUnexportSong').style.display = s.exportState === 'none' ? 'none' : '';
         const ex = $('#tlExclude');
         const target = (s.artist || s.title || '').trim();
         ex.classList.remove('confirm');
         ex.dataset.pattern = target;
-        ex.textContent = target ? `„${target}“ immer ausschließen` : 'Interpret immer ausschließen';
+        ex.textContent = target ? T('d.excludeNamed', { name: target }) : T('d.exclude');
         ex.disabled = target.length < 2;
         const next = nextSong(s);
         $('#tlMerge').disabled = !next;
-        $('#tlMerge').title = next ? `Mit „${songName(next)}“ (${fmtTime(next.start)}) zusammenführen` : 'Kein weiterer Song';
+        $('#tlMerge').title = next ? T('d.mergeWith', { song: songName(next), time: fmtTime(next.start) }) : T('d.noNext');
     }
 
     // only the fields that change while dragging (keeps the inputs the user is typing in untouched otherwise)
@@ -725,7 +845,7 @@ export default function (view) {
         if (ae !== $('#tlSongTitle')) $('#tlSongTitle').value = s.title || '';
         if (ae !== $('#tlStart')) $('#tlStart').value = fmtTime(s.start);
         if (ae !== $('#tlEnd')) $('#tlEnd').value = fmtTime(s.end);
-        $('#tlLen').textContent = `(Länge ${fmtDuration(s.end - s.start)})`;
+        $('#tlLen').textContent = T('d.length', { len: fmtDuration(s.end - s.start) });
     }
 
     function renderList() {
@@ -736,7 +856,7 @@ export default function (view) {
                 <td>${esc(songName(s))}${s.manual ? ` <span class="stf-small" title="${esc(changedBy(s))}">✎${s.modifiedBy ? ' ' + esc(s.modifiedBy) : ''}</span>` : ''}</td>
                 <td class="stf-small">${fmtDuration(s.end - s.start)}</td>
                 <td>${stateBadge(s.exportState)}</td>
-            </tr>`).join('') : '<tr><td class="stf-small">Noch keine Songs – Doppelklick in die Leiste legt einen an.</td></tr>';
+            </tr>`).join('') : `<tr><td class="stf-small">${esc(T('tl.emptyList'))}</td></tr>`;
     }
 
     function select(id, scrollTo) {
@@ -836,12 +956,12 @@ export default function (view) {
         const start = parseTime($('#tlStart').value);
         const end = parseTime($('#tlEnd').value);
         if (isNaN(start) || isNaN(end)) {
-            toast('Zeit bitte als m:ss oder h:mm:ss angeben (z. B. 1:02:30).', true);
+            toast(T('toast.timeFormat'), true);
             fillDetailFields(s);
             return;
         }
         if (end - start < MIN_LEN) {
-            toast('Das Ende muss nach dem Start liegen.', true);
+            toast(T('toast.endAfterStart'), true);
             fillDetailFields(s);
             return;
         }
@@ -871,7 +991,7 @@ export default function (view) {
             const following = songs().filter(s => s.start > start + 5).sort((a, b) => a.start - b.start)[0];
             const end = Math.min(start + 30, following ? following.start : R, R);
             pushUndo(snapshot());
-            const res = await call('POST', `Items/${st.item.id}/Songs`, { Artist: '', Title: 'Neuer Song', StartSeconds: start, EndSeconds: Math.max(end, start + MIN_LEN) }, true);
+            const res = await call('POST', `Items/${st.item.id}/Songs`, { Artist: '', Title: T('common.newSong'), StartSeconds: start, EndSeconds: Math.max(end, start + MIN_LEN) }, true);
             await reloadItem();
             select(res.id);
             const inp = $('#tlSongTitle');
@@ -886,7 +1006,7 @@ export default function (view) {
             s = songs().find(x => st.cursor > x.start + MIN_LEN && st.cursor < x.end - MIN_LEN) || null;
         }
         if (!s) {
-            toast('Setze den roten Cursor (Klick in die Leiste) in einen Song, dann teilen.', true);
+            toast(T('toast.splitHint'), true);
             return;
         }
         await act(async () => {
@@ -894,7 +1014,7 @@ export default function (view) {
             const res = await call('POST', `Items/${st.item.id}/Songs/${s.id}/Split`, { At: Math.round(st.cursor * 10) / 10 }, true);
             await reloadItem();
             select(res.id);
-            toast('Song geteilt.');
+            toast(T('toast.split'));
         });
     }
 
@@ -907,7 +1027,7 @@ export default function (view) {
             await call('POST', `Items/${st.item.id}/Songs/${s.id}/Merge`, { OtherId: n.id });
             await reloadItem();
             select(s.id);
-            toast('Zusammengeführt.');
+            toast(T('toast.merged'));
         });
     }
 
@@ -920,7 +1040,7 @@ export default function (view) {
             st.sel = null;
             await reloadItem();
             await loadItems();
-            toast('Song gelöscht' + (s.exportState !== 'none' ? ' (auch aus Jellyfin entfernt)' : '') + ' – „Rückgängig“ holt ihn zurück.');
+            toast(T(s.exportState !== 'none' ? 'toast.deletedExported' : 'toast.deleted'));
         });
     }
 
@@ -932,13 +1052,13 @@ export default function (view) {
             if (songsSignature(fresh.songs) !== st.serverSig) {
                 st.undo = [];
                 await reloadItem();
-                toast('Rückgängig nicht möglich: Jemand anderes hat diesen Titel inzwischen geändert. Die aktuelle Fassung wird angezeigt.', true);
+                toast(T('toast.undoConflict'), true);
                 return;
             }
             const snap = st.undo.pop();
             await call('PUT', `Items/${st.item.id}/Songs`, snap.map(toDto));
             await reloadItem();
-            toast('Rückgängig gemacht.');
+            toast(T('toast.undone'));
         });
     }
 
@@ -947,13 +1067,22 @@ export default function (view) {
             const btn = ids ? $('#tlExportSong') : $('#tlExportItem');
             const label = btn.textContent;
             btn.disabled = true;
-            btn.textContent = 'Speichere …';
+            btn.textContent = T('d.saving');
             try {
                 const res = await call('POST', `Items/${st.item.id}/Export`, { SongIds: ids || null }, true);
-                toast(res.written ? `${res.written} ${res.written === 1 ? 'Datei' : 'Dateien'} in Jellyfin gespeichert.` : 'Alles war schon aktuell gespeichert.');
+                toast(res.written ? T('toast.exported', { files: Tn('count.files', res.written) }) : T('toast.upToDate'));
             } finally {
                 btn.textContent = label;
             }
+            await reloadItem();
+            await loadItems();
+        });
+    }
+
+    async function unexportSongs(ids) {
+        await act(async () => {
+            const res = await call('POST', `Items/${st.item.id}/Unexport`, { SongIds: ids || null }, true);
+            toast(res.removed ? T('toast.unexported', { files: Tn('count.files', res.removed) }) : T('toast.nothingToRemove'));
             await reloadItem();
             await loadItems();
         });
@@ -1002,8 +1131,8 @@ export default function (view) {
         } catch (e) {
             if (!play.active || (e && e.name === 'AbortError')) return; // stopped meanwhile
             stopPlay();
-            if (e && e.name === 'NotAllowedError') toast('Der Browser hat das Abspielen blockiert – bitte nochmal klicken.', true);
-            else toast('Abspielen nicht möglich: ' + ((e && e.message) || e), true);
+            if (e && e.name === 'NotAllowedError') toast(T('toast.playBlocked'), true);
+            else toast(T('toast.playFailed', { error: (e && e.message) || e }), true);
         }
     }
 
@@ -1220,6 +1349,10 @@ export default function (view) {
         $('#WriteToOverview').checked = config.WriteToOverview;
         $('#OverviewLink').checked = config.OverviewLink;
         $('#NowPlayingEnabled').checked = config.NowPlayingEnabled;
+        const tl = $('#TextLanguage');
+        tl.innerHTML = `<option value="">${esc(T('set.textLanguageAuto'))}</option>`
+            + Object.entries(LANGS).map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('');
+        tl.value = pickLang(config.TextLanguage) || '';
         $('#ExcludePatterns').value = (config.ExcludePatterns || []).join('\n');
         const sel = new Set(config.LibraryIds || []);
         $('#stfLibraries').innerHTML = libs.map(l => `
@@ -1238,16 +1371,17 @@ export default function (view) {
             config.WriteToOverview = $('#WriteToOverview').checked;
             config.OverviewLink = $('#OverviewLink').checked;
             config.NowPlayingEnabled = $('#NowPlayingEnabled').checked;
+            config.TextLanguage = $('#TextLanguage').value || '';
             config.ExcludePatterns = $('#ExcludePatterns').value.split('\n').map(x => x.trim()).filter(Boolean);
             config.LibraryIds = [...view.querySelectorAll('.stf-lib:checked')].map(c => c.value);
             const r = await ApiClient.updatePluginConfiguration(pluginId, config);
             if (window.Dashboard && Dashboard.processPluginConfigurationUpdateResult) Dashboard.processPluginConfigurationUpdateResult(r);
-            else toast('Einstellungen gespeichert.');
+            else toast(T('toast.settingsSaved'));
             loadStatus();
             loadItems();
             if (st.item) reloadItem();
         } catch (err) {
-            toast('Speichern fehlgeschlagen: ' + await errorText(err), true);
+            toast(T('toast.saveFailed', { error: await errorText(err) }), true);
         }
         return false;
     }
@@ -1285,7 +1419,7 @@ export default function (view) {
         try {
             await call('PUT', 'Me/NowPlaying', { Enabled: on });
             view.querySelectorAll('.np-check').forEach(x => { x.checked = on; });
-            toast(on ? 'Einblendungen beim Schauen sind an.' : 'Einblendungen beim Schauen sind aus.');
+            toast(T(on ? 'np.on' : 'np.offToast'));
         } catch (err) {
             c.checked = !on;
             toast(err.message, true);
@@ -1299,19 +1433,41 @@ export default function (view) {
     }));
     $('#stfAnalyzeAll').addEventListener('click', () => act(async () => {
         await call('POST', 'AnalyzeAll');
-        toast('Alle noch offenen Titel wurden in die Warteschlange gestellt.');
+        toast(T('toast.analyzeOpenQueued'));
         loadStatus();
     }));
+    // "Alle neu analysieren": the first click only arms the button (re-checks the whole library)
+    let reanalyzeTimer = 0;
+    $('#stfReanalyzeAll').addEventListener('click', () => {
+        const btn = $('#stfReanalyzeAll');
+        const reset = () => {
+            btn.classList.remove('confirm');
+            btn.textContent = T('btn.reanalyzeAll');
+        };
+        clearTimeout(reanalyzeTimer);
+        if (!btn.classList.contains('confirm')) {
+            btn.classList.add('confirm');
+            btn.textContent = T('btn.reanalyzeAllConfirm', { n: st.total ?? '' });
+            reanalyzeTimer = setTimeout(reset, 5000);
+            return;
+        }
+        reset();
+        act(async () => {
+            const res = await call('POST', 'ReanalyzeAll', undefined, true);
+            toast(T('toast.reanalyzeQueued', { n: res.queued }));
+            loadStatus();
+        });
+    });
     $('#stfExportAll').addEventListener('click', () => act(async () => {
         await call('POST', 'ExportAll');
-        toast('Alle Songs werden im Hintergrund in Jellyfin gespeichert.');
+        toast(T('toast.exportAllStarted'));
         loadStatus();
     }));
     $('#stfAppCopy').addEventListener('click', async () => {
         const url = $('#stfAppLink').href;
         try {
             await navigator.clipboard.writeText(url);
-            toast('Adresse kopiert – z. B. per Nachricht an deine Benutzer schicken.');
+            toast(T('app.copied'));
         } catch {
             toast(url);
         }
@@ -1394,7 +1550,7 @@ export default function (view) {
         if (!btn.classList.contains('confirm')) {
             // first click only arms the button: this changes all titles
             btn.classList.add('confirm');
-            btn.textContent = `Wirklich? „${pattern}“ aus allen Titeln entfernen`;
+            btn.textContent = T('d.excludeConfirm', { name: pattern });
             clearTimeout(excludeTimer);
             excludeTimer = setTimeout(() => { if (selected()) renderDetail(); }, 5000);
             return;
@@ -1407,16 +1563,31 @@ export default function (view) {
             await reloadItem();
             await loadItems();
             loadConfig().catch(() => {});
-            toast(`„${res.pattern}“ steht jetzt auf der Ausschlussliste – ${res.removed} ${res.removed === 1 ? 'Song' : 'Songs'} entfernt.`);
+            toast(T('toast.excluded', { name: res.pattern, songs: Tn('count.songs', res.removed) }));
         });
     });
     $('#tlExportSong').addEventListener('click', () => selected() && exportSongs([selected().id]));
+    $('#tlUnexportSong').addEventListener('click', () => selected() && unexportSongs([selected().id]));
+    let unexportTimer = 0;
+    $('#tlUnexportItem').addEventListener('click', () => {
+        const btn = $('#tlUnexportItem');
+        clearTimeout(unexportTimer);
+        if (!btn.classList.contains('confirm')) {
+            // first click only arms the button
+            const n = songs().filter(x => x.exportState && x.exportState !== 'none').length;
+            btn.classList.add('confirm');
+            btn.textContent = T('tl.unexportItemConfirm', { n: Tn('count.files', n) });
+            unexportTimer = setTimeout(() => { if (st.item) renderHeader(); }, 5000);
+            return;
+        }
+        unexportSongs(null);
+    });
     $('#tlMp3').addEventListener('click', () => act(async () => {
         const s = selected();
         if (!s) return;
         const btn = $('#tlMp3');
         btn.disabled = true;
-        btn.textContent = 'Schneide …';
+        btn.textContent = T('d.mp3Busy');
         try {
             const blob = await getBlob(`Items/${st.item.id}/Songs/${s.id}/Mp3`);
             const a = document.createElement('a');
@@ -1427,7 +1598,7 @@ export default function (view) {
             setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 3000);
         } finally {
             btn.disabled = false;
-            btn.textContent = 'Szene als MP3';
+            btn.textContent = T('d.mp3');
         }
     }));
     $('#tlList').addEventListener('click', e => {
@@ -1443,7 +1614,7 @@ export default function (view) {
     audio.addEventListener('error', () => {
         if (!play.active) return;
         stopPlay();
-        toast('Wiedergabe abgebrochen (Stream nicht verfügbar).', true);
+        toast(T('toast.streamFailed'), true);
     });
 
     $('#stfConfigForm').addEventListener('submit', saveConfig);
@@ -1456,7 +1627,7 @@ export default function (view) {
         setPps(wasFit ? st.fitPps : st.pps, center, viewWidth() / 2);
     }) : null;
 
-    view.addEventListener('viewshow', () => {
+    view.addEventListener('viewshow', () => ready.then(() => {
         loadItems().then(openFromAddress).catch(err => toast(err.message, true));
         loadMe().catch(() => {});
         loadNowPlayingStatus();
@@ -1470,7 +1641,7 @@ export default function (view) {
         }
         document.addEventListener('keydown', onKey);
         if (ro) ro.observe($('#tlScroll'));
-    });
+    }));
     view.addEventListener('viewhide', () => {
         clearInterval(statusTimer);
         clearInterval(npTimer);

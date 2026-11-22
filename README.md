@@ -5,7 +5,7 @@ Find out which songs play in your movies and TV episodes. Soundtrack Finder list
 
 ![Timeline editor](docs/timeline_claude.png)
 
-> The user interface is currently in **German**. See [CHANGELOG.md](CHANGELOG.md) for the version history.
+> Available in **English, German, French, Spanish and Italian**. See [CHANGELOG.md](CHANGELOG.md) for the version history.
 
 ## Features
 
@@ -18,11 +18,14 @@ Find out which songs play in your movies and TV episodes. Soundtrack Finder list
   - zoom and scroll, and use keyboard shortcuts
 - **Listen in place.** Play from the cursor, a whole song, or just its end, streamed straight from your file.
 - **Save to Jellyfin as music.** Each song is cut from your own file into an MP3, with tags, the poster as cover art and a short fade in and out. Movies become albums (`Movie (Year)/01 - Artist - Title.mp3`); series become one album per season. The music library is rescanned automatically.
-- **Scene as MP3.** Download any song section as an MP3.
+- **Scene as MP3.** Download any song section as an MP3 with the same tags and cover art as in the music library, so it imports cleanly into Apple Music, iTunes or other players.
+- **Remove from Jellyfin.** Delete saved MP3s again, one song or a whole title at a time. The songs stay on the timeline and can be saved again later.
 - **"Now playing" pop-up.** While you watch, a short note shows the song that just started. Each user can turn it off, and a diagnostics panel with a test button helps when nothing shows up.
 - **Search and statistics.** Search all titles by song or artist, and see top artists and songs.
 - **For all users.** Every signed-in user can open the Soundtracks page (`/SoundtrackFinder/App`), see the titles their library access allows, and edit and save songs. Changes are recorded with the user's name. Starting analyses and changing settings is limited to admins.
 - **Exclusion list.** Hide false matches such as sound-effect libraries ("Sound Ideas", "ASMR", "Karaoke", …), including from titles that were already analyzed.
+- **Re-analyze everything.** One button queues every title for a fresh Shazam pass; songs you added or edited by hand are kept.
+- **Languages.** The pages follow each user's Jellyfin language (or the browser's) and have a language picker. Texts that the plugin writes into Jellyfin, such as the link in descriptions and folder names of saved songs, use a language you choose in the settings.
 
 ## Requirements
 
@@ -54,7 +57,7 @@ Docker example:
 ```bash
 cd /path/to/jellyfin/config/plugins
 rm -rf SoundtrackFinder_1.*
-unzip ~/SoundtrackFinder_1.3.2.0_claude.zip -d .
+unzip ~/SoundtrackFinder_1.4.0.0_claude.zip -d .
 docker restart jellyfin
 ```
 
@@ -62,8 +65,8 @@ Your results are kept across updates in `config/plugins/Jellyfin.Plugin.Soundtra
 
 ## Setup
 
-1. **Dashboard → Plugins → Soundtrack Finder → Einstellungen:** select the movie and series libraries to scan.
-2. Optional: to test before the nightly run, open a title and click **Neu analysieren**, or start everything now with **Alle offenen jetzt analysieren** on the **Fortschritt** card.
+1. **Dashboard → Plugins → Soundtrack Finder → Settings:** select the movie and series libraries to scan.
+2. Optional: to test before the nightly run, open a title and click **Re-analyze**, or start everything now with **Analyze all open titles now** on the **Progress** card. **Re-analyze all** checks the whole library again.
 
 ### Saving songs as music (optional)
 
@@ -74,13 +77,13 @@ Your results are kept across updates in `config/plugins/Jellyfin.Plugin.Soundtra
    ```
    Give it to the user Jellyfin runs as (`docker exec jellyfin id`, then `chown uid:gid`). Don't put it inside a movie or TV library.
 2. In Jellyfin, add a library of type **Music** with the folder `/media/Soundtracks`.
-3. In the plugin settings, set **Zielordner für Songs** to `/media/Soundtracks`.
+3. In the plugin settings, set **Target folder for songs** to `/media/Soundtracks`.
 
 If the folder isn't writable or isn't part of a music library, the plugin shows a yellow warning with the reason. To let other users play the saved songs, give them access to the music library under **Dashboard → Users → Access**.
 
 ### Helping users find the Soundtracks page
 
-- **Link in every description.** The `🎵 Songs` block contains "▶ anhören & bearbeiten", which opens that title on the Soundtracks page. Set **Öffentliche Jellyfin-Adresse** in the settings to your public Jellyfin URL; it defaults to `JELLYFIN_PublishedServerUrl`.
+- **Link in every description.** The `🎵 Songs` block contains "▶ listen & edit" (in the language set under **Language of texts in Jellyfin**), which opens that title on the Soundtracks page. Set **Public Jellyfin address** in the settings to your public Jellyfin URL; it defaults to `JELLYFIN_PublishedServerUrl`.
 - **Menu entry.** Jellyfin Web can show custom links (`menuLinks` in `jellyfin-web/config.json`). With Docker, take the original file out of the image, add an entry, and mount it read-only:
   ```bash
   docker run --rm --entrypoint cat jellyfin/jellyfin:latest /jellyfin/jellyfin-web/config.json > web-config.json
@@ -111,9 +114,10 @@ Open a title from the list (dashboard plugin page or `/SoundtrackFinder/App`).
 | Play / stop | **Space** (plays from the cursor until you stop) |
 | Move a song | Drag the block, or select it and press **← / →** (±1 s, **Alt** for ±0.1 s) |
 | Change the length | Drag an edge, **Shift + ← / →** moves the end, **[** / **]** set start or end to the cursor |
-| New song | Double-click an empty spot, or "＋ Song am Cursor" |
-| Split / merge | **S** splits at the cursor; "⇥ Mit nächstem zusammenführen" merges with the next song |
+| New song | Double-click an empty spot, or "＋ Song at cursor" |
+| Split / merge | **S** splits at the cursor; "⇥ Merge with next" merges with the next song |
 | Delete | **Delete** / **Backspace** (also removes a saved MP3) |
+| Remove from Jellyfin | "Remove from Jellyfin" for the selected song, "Remove all from Jellyfin" for the title (click twice); the songs stay |
 | Undo | **Ctrl/⌘ + Z** |
 | Zoom / scroll | Mouse wheel zooms; **Shift + wheel** or dragging an empty area scrolls |
 
@@ -124,7 +128,7 @@ Every edit is saved immediately and marked as manual (✎). Manual songs are nev
 When a recognized song starts, Jellyfin Web shows a short note such as `🎵 Artist – Title` at the bottom of the screen. This works in clients that support server messages (`DisplayMessage`), such as Jellyfin Web. Some mobile and TV apps don't support them.
 
 - Admins can turn the feature off globally and set how long the note stays. Each user can turn it off for themselves on the Soundtracks page.
-- The panel next to the switch shows, per device, what is playing, whether the app supports pop-ups, and when the next song starts. **Test-Einblendung senden** sends a test note right away.
+- The panel next to the switch shows, per device, what is playing, whether the app supports pop-ups, and when the next song starts. **Send test pop-up** sends a test note right away.
 - After a Jellyfin restart, a browser may need a reload before it reports pop-up support again.
 
 ## Settings
@@ -142,6 +146,7 @@ When a recognized song starts, Jellyfin Web shows a short note such as `🎵 Art
 | Now playing | on, 6 s | Pop-up while watching |
 | Exclusion list | Sound Ideas, ASMR, Sound Effects, Soundeffekte, White Noise, Karaoke, TV Theme Tune Factory | Matches containing one of these texts in "artist – title" are ignored |
 | Export folder, fade, bitrate, album artist | empty, 1 s, 192 kbit/s, "Soundtracks" | Options for saving songs as music |
+| Language of texts in Jellyfin | automatic (server language) | Link text in descriptions, the scheduled task, folder names and comments of saved songs |
 
 ## Permissions
 
@@ -149,8 +154,8 @@ When a recognized song starts, Jellyfin Web shows a short note such as `🎵 Art
 |---|---|---|
 | View titles, timeline, listen | ✓ (only titles they have access to) | ✓ |
 | Edit, add, split, merge, delete songs | ✓ | ✓ |
-| Save to Jellyfin, scene as MP3 | ✓ | ✓ |
-| Analyze, analyze all, save all, stop, exclude an artist, settings | – | ✓ |
+| Save to / remove from Jellyfin, scene as MP3 | ✓ | ✓ |
+| Analyze, analyze all, re-analyze all, save all, stop, exclude an artist, settings | – | ✓ |
 
 ## How it works
 
@@ -160,6 +165,10 @@ When a recognized song starts, Jellyfin Web shows a short note such as `🎵 Art
 4. Results are stored as JSON in the plugin's data folder. The description block is written through Jellyfin's metadata API.
 
 The plugin never downloads music. Saved MP3s are cut from your own media files, so they contain the movie's soundtrack mix, which may include dialogue and sound effects.
+
+## Translations
+
+Texts live in `SoundtrackFinder_claude/Web/i18n/<language>.json` (German is the source). To add a language, copy `en.json`, translate the values, keep the `{placeholders}`, and add the language code to `LANGS` in `Web/configPage.js` and `Languages` in `Services/Loc.cs`.
 
 ## Building from source
 
@@ -181,6 +190,7 @@ The project references `Jellyfin.Controller` and `Jellyfin.Model` 12.4 from NuGe
    - `soundtrack-finder_<version>_claude.zip`: `Jellyfin.Plugin.SoundtrackFinder.dll` and `meta.json`, no subfolder (used by the catalog)
    - `SoundtrackFinder_<version>_claude.zip`: the same files inside a folder `SoundtrackFinder_<version>/` (manual install)
 3. Add a new entry at the top of `versions` in `manifest_claude.json`, with `sourceUrl` pointing to the raw URL of the catalog ZIP and `checksum` set to its MD5 (`md5sum file.zip`).
+4. Optional: create a GitHub release with a new tag `v<version>`. The workflow in `.github/workflows/release_claude.yml` then attaches both ZIPs to it.
 
 ## Disclaimer
 

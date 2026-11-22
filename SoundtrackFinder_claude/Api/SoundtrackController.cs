@@ -113,6 +113,9 @@ public class SoundtrackController : ControllerBase
         _userManager = userManager;
     }
 
+    // language of the page that sent the request (texts in error messages and warnings)
+    private string Lang => Loc.Normalize(Request?.Headers["X-STF-Lang"].ToString()) ?? Loc.ConfigLanguage;
+
     private Guid CurrentUserId()
         => Guid.TryParse(User.FindFirst("Jellyfin-UserId")?.Value, out var g) ? g : Guid.Empty;
 
@@ -156,7 +159,7 @@ public class SoundtrackController : ControllerBase
             averageSeconds = avg,
             etaSeconds = avg * remaining,
             currentItem = _service.CurrentItem,
-            phase = _service.Phase,
+            phase = Loc.T(Lang, _service.Phase, ("n", _service.PhaseCount)),
             progress = _service.CurrentProgress,
             taskRunning = _service.TaskRunning,
             queue = _service.QueueLength,
@@ -164,7 +167,7 @@ public class SoundtrackController : ControllerBase
             exportDone = _exporter.AllDone,
             exportTotal = _exporter.AllTotal,
             exportCurrent = _exporter.Current,
-            exportWarning = _exporter.CheckTarget(out bool fatal),
+            exportWarning = _exporter.CheckTarget(out bool fatal, Lang),
             exportPossible = !fatal,
             appUrl = AnalysisService.AppUrl()
         };
@@ -188,7 +191,7 @@ public class SoundtrackController : ControllerBase
         var id = CurrentUserId();
         if (id == Guid.Empty)
         {
-            return BadRequest("Nur für angemeldete Benutzer.");
+            return BadRequest(Loc.T(Lang, "srv.signedInOnly"));
         }
 
         _userSettings.SetNowPlaying(id, dto.Enabled);
@@ -203,7 +206,7 @@ public class SoundtrackController : ControllerBase
     /// <summary>Sends a test pop-up to all devices of the signed-in user.</summary>
     [HttpPost("Me/NowPlaying/Test")]
     public async Task<ActionResult<object>> NowPlayingTest()
-        => new { devices = await _nowPlaying.SendTestAsync(CurrentUserId()).ConfigureAwait(false) };
+        => new { devices = await _nowPlaying.SendTestAsync(CurrentUserId(), Lang).ConfigureAwait(false) };
 
     /// <summary>Searches songs in all titles the user may see ("In welchen Filmen kommt … vor?").</summary>
     [HttpGet("Search")]
@@ -406,7 +409,7 @@ public class SoundtrackController : ControllerBase
                 hits = s.Hits,
                 exportState = states.TryGetValue(s.Id, out var st) ? st : "none"
             }),
-            exportWarning = _exporter.CheckTarget(out bool fatal),
+            exportWarning = _exporter.CheckTarget(out bool fatal, Lang),
             exportPossible = !fatal
         };
     }
@@ -430,14 +433,14 @@ public class SoundtrackController : ControllerBase
     [Authorize(Policy = Policies.RequiresElevation)]
     public ActionResult AnalyzeAll()
     {
-        var done = _store.All().Where(r => r.Analyzed).Select(r => r.ItemId).ToHashSet();
-        foreach (var i in _service.GetEligibleItems().Where(i => !done.Contains(i.Id)))
-        {
-            _service.Enqueue(i.Id);
-        }
-
+        _service.EnqueueAll(includeAnalyzed: false);
         return NoContent();
     }
+
+    /// <summary>Queues every title for a new analysis ("Alle neu analysieren"); manual songs are kept.</summary>
+    [HttpPost("ReanalyzeAll")]
+    [Authorize(Policy = Policies.RequiresElevation)]
+    public ActionResult<object> ReanalyzeAll() => new { queued = _service.EnqueueAll(includeAnalyzed: true) };
 
     /// <summary>Stops the running analysis / saving and clears the queue.</summary>
     [HttpPost("Stop")]
@@ -585,7 +588,7 @@ public class SoundtrackController : ControllerBase
         });
         if (newId == null)
         {
-            return BadRequest("Die Trennstelle muss innerhalb des Songs liegen.");
+            return BadRequest(Loc.T(Lang, "srv.splitInside"));
         }
 
         await _service.ApplyOverviewAsync(item, r, CancellationToken.None).ConfigureAwait(false);
@@ -689,7 +692,7 @@ public class SoundtrackController : ControllerBase
             return NotFound();
         }
 
-        var bytes = await AudioScanner.CutMp3Async(_service.FfmpegPath, item.Path, s.StartSeconds, s.EndSeconds, _service.TempPath, Math.Clamp(Config.ExportBitrateKbps, 96, 320), ct).ConfigureAwait(false);
+        var bytes = await _exporter.RenderDownloadAsync(item, s, _service.TempPath, ct).ConfigureAwait(false);
         var name = string.Join("_", $"{s.Artist} - {s.Title} ({item.Name}).mp3".Split(System.IO.Path.GetInvalidFileNameChars()));
         return File(bytes, "audio/mpeg", name);
     }
@@ -785,13 +788,28 @@ public class SoundtrackController : ControllerBase
         try
         {
             var ids = dto?.SongIds is { Count: > 0 } list ? list : null;
-            int written = await _exporter.ExportItemAsync(item, ids, ct).ConfigureAwait(false);
+            int written = await _exporter.ExportItemAsync(item, ids, ct, Lang).ConfigureAwait(false);
             return new { written };
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.IO.IOException or UnauthorizedAccessException)
         {
             return BadRequest(ex.Message);
         }
+    }
+
+    /// <summary>Removes saved songs of a title from Jellyfin (deletes the MP3s); the songs stay on the timeline.</summary>
+    [HttpPost("Items/{id}/Unexport")]
+    public async Task<ActionResult<object>> Unexport([FromRoute] Guid id, [FromBody] ExportDto? dto, CancellationToken ct)
+    {
+        var item = Find(id);
+        if (item == null)
+        {
+            return NotFound();
+        }
+
+        var ids = dto?.SongIds is { Count: > 0 } list ? list : null;
+        int removed = await _exporter.UnexportItemAsync(item, ids, ct).ConfigureAwait(false);
+        return new { removed };
     }
 
     /// <summary>Adds an entry to the exclusion list and removes matching recognized songs everywhere.</summary>
@@ -803,7 +821,7 @@ public class SoundtrackController : ControllerBase
         var plugin = Plugin.Instance;
         if (pattern.Length < 2 || plugin == null)
         {
-            return BadRequest("Bitte mindestens 2 Zeichen angeben.");
+            return BadRequest(Loc.T(Lang, "srv.minChars"));
         }
 
         var cfg = plugin.Configuration;

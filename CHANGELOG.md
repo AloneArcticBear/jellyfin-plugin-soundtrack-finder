@@ -1,7 +1,14 @@
 <!-- #claude -->
 # Changelog
 
-All versions target Jellyfin 12.4 (ABI `12.4.0.0`). Downloads (in [`releases_claude`](releases_claude) and in the Jellyfin catalog) are available for 1.0.0.0, 1.3.1.0 and 1.3.2.0; the source code in this repository is the current version.
+All versions target Jellyfin 12.4 (ABI `12.4.0.0`). Downloads (in [`releases_claude`](releases_claude) and in the Jellyfin catalog) are available for 1.0.0.0, 1.3.1.0, 1.3.2.0 and 1.4.0.0; the source code in this repository is the current version.
+
+## 1.4.0.0 – 2026-11-22
+- Interface in English, German, French, Spanish and Italian. The pages follow the user's Jellyfin language (or the browser's) and have a language picker; error messages come in the same language.
+- New setting "Language of texts in Jellyfin" for the link in descriptions, the scheduled task, and folder names and comments of saved songs. Existing installations keep German.
+- "Re-analyze all" (admins): queues every title for a new analysis; songs added or edited by hand are kept.
+- "Remove from Jellyfin": deletes saved MP3s of one song or a whole title; the songs stay on the timeline.
+- "Scene as MP3" now has the song's tags (title, artist, album, track, year, genre, scene) and the poster as cover. Before, players such as Apple Music showed the movie file's own title. Tags and chapters of the movie file are no longer copied into saved songs either.
 
 ## 1.3.2.0 – 2026-11-22
 - "Now playing" pop-ups now reach every open Jellyfin Web tab or window of a browser. Jellyfin itself only sends messages to the most recently active connection, and all tabs of one browser share a session, so pop-ups often landed in the wrong tab.

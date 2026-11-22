@@ -92,18 +92,19 @@ public sealed class MusicExporter : IDisposable
 
     /// <summary>Checks the target folder. Returns null if everything is fine, otherwise a German warning.</summary>
     /// <param name="fatal">True if saving is impossible.</param>
-    public string? CheckTarget(out bool fatal)
+    public string? CheckTarget(out bool fatal, string? lang = null)
     {
+        lang ??= Loc.ConfigLanguage;
         fatal = true;
         var root = Root;
         if (string.IsNullOrEmpty(root))
         {
-            return "Kein Zielordner eingestellt (Einstellungen → „Zielordner für Songs“).";
+            return Loc.T(lang, "srv.noTarget");
         }
 
         if (!Path.IsPathRooted(root))
         {
-            return "Der Zielordner muss ein absoluter Pfad im Container sein, z. B. /media/Soundtracks.";
+            return Loc.T(lang, "srv.targetAbsolute");
         }
 
         try
@@ -115,7 +116,7 @@ public sealed class MusicExporter : IDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return $"Zielordner {root} ist nicht beschreibbar ({ex.Message}). Ist er im Container ohne :ro eingebunden?";
+            return Loc.T(lang, "srv.targetNotWritable", ("root", root), ("error", ex.Message));
         }
 
         fatal = false;
@@ -125,17 +126,17 @@ public sealed class MusicExporter : IDisposable
             .Any(loc => IsUnder(root, loc));
         return covered
             ? null
-            : $"Keine Musik-Bibliothek enthält {root}. Die Dateien werden gespeichert, erscheinen aber erst, wenn du in Jellyfin eine Bibliothek vom Typ „Musik“ mit diesem Ordner anlegst.";
+            : Loc.T(lang, "srv.noMusicLibrary", ("root", root));
     }
 
     /// <summary>Saves songs of one title. With <paramref name="songIds"/> only those (plus renumbered ones), otherwise all.</summary>
     /// <returns>Number of written files.</returns>
-    public async Task<int> ExportItemAsync(BaseItem item, ICollection<string>? songIds, CancellationToken ct)
+    public async Task<int> ExportItemAsync(BaseItem item, ICollection<string>? songIds, CancellationToken ct, string? lang = null)
     {
         CheckTarget(out bool fatal);
         if (fatal)
         {
-            throw new InvalidOperationException(CheckTarget(out _));
+            throw new InvalidOperationException(CheckTarget(out _, lang));
         }
 
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
@@ -209,6 +210,55 @@ public sealed class MusicExporter : IDisposable
             }
 
             return written;
+        }
+        finally
+        {
+            _writeLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Removes saved songs of one title from the music library (deletes the MP3s); the songs stay on the timeline.
+    /// With <paramref name="songIds"/> only those, otherwise all saved songs of the title.
+    /// </summary>
+    /// <returns>Number of songs removed from Jellyfin.</returns>
+    public async Task<int> UnexportItemAsync(BaseItem item, ICollection<string>? songIds, CancellationToken ct)
+    {
+        await _writeLock.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            var r = _store.Get(item.Id);
+            if (r == null)
+            {
+                return 0;
+            }
+
+            var targets = r.Songs
+                .Where(s => !string.IsNullOrEmpty(s.ExportedPath) && (songIds == null || songIds.Contains(s.Id)))
+                .Select(s => (s.Id, Path: s.ExportedPath!))
+                .ToList();
+            if (targets.Count == 0)
+            {
+                return 0;
+            }
+
+            foreach (var (_, path) in targets)
+            {
+                DeleteFile(path, report: false);
+            }
+
+            var ids = targets.Select(x => x.Id).ToHashSet(StringComparer.Ordinal);
+            _store.Update(item.Id, res =>
+            {
+                foreach (var song in res.Songs.Where(s => ids.Contains(s.Id)))
+                {
+                    song.ExportedPath = null;
+                    song.ExportedSignature = null;
+                }
+            });
+            ScheduleLibraryRefresh();
+            _logger.LogInformation("Soundtrack Finder: {Count} Song(s) von {Item} aus Jellyfin entfernt", targets.Count, item.Name);
+            return targets.Count;
         }
         finally
         {
@@ -370,11 +420,53 @@ public sealed class MusicExporter : IDisposable
 
     private async Task WriteSongAsync(BaseItem item, SongEntry s, AlbumInfo album, int track, int trackCount, string? poster, string target, CancellationToken ct)
     {
+        var tmp = Path.Combine(album.Directory, ".stf_" + Guid.NewGuid().ToString("N") + ".mp3");
+        try
+        {
+            await RenderAsync(item, s, album, track, trackCount, poster, tmp, ct).ConfigureAwait(false);
+            File.Move(tmp, target, true);
+        }
+        finally
+        {
+            if (File.Exists(tmp))
+            {
+                File.Delete(tmp);
+            }
+        }
+    }
+
+    /// <summary>
+    /// "Szene als MP3": the song as a download, with the same tags and cover as in the music library
+    /// (title, artist, album = movie/season, track number, year, genre, scene as comment).
+    /// </summary>
+    public async Task<byte[]> RenderDownloadAsync(BaseItem item, SongEntry s, string tempDir, CancellationToken ct)
+    {
+        var songs = _store.Get(item.Id)?.VisibleSongs.ToList() ?? new List<SongEntry>();
+        int index = songs.FindIndex(x => x.Id == s.Id);
+        var album = AlbumInfo.For(item, tempDir);
+        string? poster = album.PosterPath != null && File.Exists(album.PosterPath) ? album.PosterPath : null;
+        Directory.CreateDirectory(tempDir);
+        var tmp = Path.Combine(tempDir, "stf_" + Guid.NewGuid().ToString("N") + ".mp3");
+        try
+        {
+            await RenderAsync(item, s, album, index >= 0 ? index + 1 : 1, Math.Max(1, songs.Count), poster, tmp, ct).ConfigureAwait(false);
+            return await File.ReadAllBytesAsync(tmp, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (File.Exists(tmp))
+            {
+                File.Delete(tmp);
+            }
+        }
+    }
+
+    private async Task RenderAsync(BaseItem item, SongEntry s, AlbumInfo album, int track, int trackCount, string? poster, string outFile, CancellationToken ct)
+    {
         var cfg = Config;
         double start = Math.Max(0, s.StartSeconds);
         double dur = Math.Max(1, s.EndSeconds - s.StartSeconds);
         double fade = Math.Clamp(cfg.ExportFadeSeconds, 0, 10);
-        var tmp = Path.Combine(album.Directory, ".stf_" + Guid.NewGuid().ToString("N") + ".mp3");
 
         var args = new List<string>
         {
@@ -386,7 +478,8 @@ public sealed class MusicExporter : IDisposable
             args.AddRange(new[] { "-i", poster });
         }
 
-        args.AddRange(new[] { "-t", dur.ToString("0.###", Inv), "-map", "0:a:0" });
+        // only our own tags: the movie file's tags (e.g. its title from a release group) and chapters must not end up in the song
+        args.AddRange(new[] { "-t", dur.ToString("0.###", Inv), "-map", "0:a:0", "-map_metadata", "-1", "-map_chapters", "-1" });
         if (poster != null)
         {
             args.AddRange(new[]
@@ -415,8 +508,8 @@ public sealed class MusicExporter : IDisposable
             }
         }
 
-        Meta("title", string.IsNullOrWhiteSpace(s.Title) ? "Unbekannter Song" : s.Title);
-        Meta("artist", string.IsNullOrWhiteSpace(s.Artist) ? "Unbekannt" : s.Artist);
+        Meta("title", string.IsNullOrWhiteSpace(s.Title) ? Loc.T("srv.unknownSong") : s.Title);
+        Meta("artist", string.IsNullOrWhiteSpace(s.Artist) ? Loc.T("srv.unknownArtist") : s.Artist);
         Meta("album", album.Album);
         Meta("album_artist", string.IsNullOrWhiteSpace(cfg.ExportAlbumArtist) ? "Soundtracks" : cfg.ExportAlbumArtist);
         Meta("track", track.ToString(Inv) + "/" + trackCount.ToString(Inv));
@@ -424,20 +517,8 @@ public sealed class MusicExporter : IDisposable
         Meta("date", album.Year?.ToString(Inv));
         Meta("genre", "Soundtrack");
         Meta("comment", album.Comment(s));
-        args.AddRange(new[] { "-id3v2_version", "3", "-f", "mp3", tmp });
-
-        try
-        {
-            await AudioScanner.RunFfmpegAsync(_mediaEncoder.EncoderPath, args, ct).ConfigureAwait(false);
-            File.Move(tmp, target, true);
-        }
-        finally
-        {
-            if (File.Exists(tmp))
-            {
-                File.Delete(tmp);
-            }
-        }
+        args.AddRange(new[] { "-id3v2_version", "3", "-f", "mp3", outFile });
+        await AudioScanner.RunFfmpegAsync(_mediaEncoder.EncoderPath, args, ct).ConfigureAwait(false);
     }
 
     private async Task WriteFolderImageAsync(string poster, string dir, CancellationToken ct)
@@ -560,10 +641,10 @@ public sealed class MusicExporter : IDisposable
         {
             if (item is Episode ep)
             {
-                string series = string.IsNullOrWhiteSpace(ep.SeriesName) ? "Serie" : ep.SeriesName;
+                string series = string.IsNullOrWhiteSpace(ep.SeriesName) ? Loc.T("srv.series") : ep.SeriesName;
                 int season = ep.ParentIndexNumber ?? 0;
                 int episode = ep.IndexNumber ?? 0;
-                string seasonName = season == 0 ? "Specials" : "Staffel " + season.ToString(Inv);
+                string seasonName = season == 0 ? Loc.T("srv.specials") : Loc.T("srv.season", ("n", season));
                 string? poster = ImagePath(ep.Season) ?? ImagePath(ep.Series) ?? ImagePath(ep);
                 string tag = $"S{season:00}E{episode:00}";
                 return new AlbumInfo(
@@ -582,14 +663,14 @@ public sealed class MusicExporter : IDisposable
 
         public string FileName(int track, SongEntry s)
         {
-            string artist = string.IsNullOrWhiteSpace(s.Artist) ? "Unbekannt" : s.Artist;
-            string title = string.IsNullOrWhiteSpace(s.Title) ? "Unbekannter Song" : s.Title;
+            string artist = string.IsNullOrWhiteSpace(s.Artist) ? Loc.T("srv.unknownArtist") : s.Artist;
+            string title = string.IsNullOrWhiteSpace(s.Title) ? Loc.T("srv.unknownSong") : s.Title;
             string prefix = EpisodeTag != null ? EpisodeTag + " - " : string.Empty;
             return Safe($"{prefix}{track:00} - {artist} - {title}", 150) + ".mp3";
         }
 
         public string Comment(SongEntry s)
-            => $"Szene {AudioScanner.FormatTime(s.StartSeconds)}–{AudioScanner.FormatTime(s.EndSeconds)} aus {SceneName} (Soundtrack Finder)";
+            => Loc.T("srv.scene", ("from", AudioScanner.FormatTime(s.StartSeconds)), ("to", AudioScanner.FormatTime(s.EndSeconds)), ("title", SceneName));
 
         private static string? ImagePath(BaseItem? item)
         {

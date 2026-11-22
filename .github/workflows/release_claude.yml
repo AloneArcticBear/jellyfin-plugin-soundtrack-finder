@@ -1,7 +1,10 @@
-# claude: creates a GitHub release with the plugin ZIPs whenever a tag v<version> is pushed
+# claude: attaches the plugin ZIPs (releases_claude/v<version>/) to a release v<version>
+# when the release is published on GitHub or its tag is pushed
 name: Release
 
 on:
+  release:
+    types: [published]
   push:
     tags: ['v*']
 

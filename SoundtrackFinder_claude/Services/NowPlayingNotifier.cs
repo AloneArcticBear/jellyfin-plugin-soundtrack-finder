@@ -224,7 +224,7 @@ public sealed class NowPlayingNotifier : IHostedService, IDisposable
         _logger.LogInformation("Soundtrack Finder: Jetzt läuft auf {Device}: {Song}", device ?? sessionId, text);
         var cmd = new MessageCommand
         {
-            Header = "Jetzt läuft",
+            Header = Loc.T("np.header"),
             Text = text,
             TimeoutMs = Math.Clamp(Config.NowPlayingSeconds, 2, 30) * 1000L // with a timeout the web app shows a small pop-up, not a dialog
         };
@@ -284,7 +284,7 @@ public sealed class NowPlayingNotifier : IHostedService, IDisposable
     }
 
     /// <summary>Sends a test pop-up to all devices of the user; returns per device whether it was sent.</summary>
-    public async Task<List<object>> SendTestAsync(Guid userId)
+    public async Task<List<object>> SendTestAsync(Guid userId, string? lang = null)
     {
         var result = new List<object>();
         foreach (var s in _sessionManager.Sessions.Where(s => s.UserId == userId).OrderByDescending(s => s.LastActivityDate))
@@ -298,7 +298,7 @@ public sealed class NowPlayingNotifier : IHostedService, IDisposable
                     connections = await MessageDelivery.SendAsync(
                         _sessionManager,
                         s,
-                        new MessageCommand { Header = "Test", Text = "🎵 Test: So sieht „Jetzt läuft“ aus", TimeoutMs = Math.Clamp(Config.NowPlayingSeconds, 2, 30) * 1000L },
+                        new MessageCommand { Header = "Test", Text = Loc.T(lang ?? Loc.ConfigLanguage, "np.testText"), TimeoutMs = Math.Clamp(Config.NowPlayingSeconds, 2, 30) * 1000L },
                         _logger,
                         CancellationToken.None).ConfigureAwait(false);
                 }
